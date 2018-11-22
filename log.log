@@ -1,0 +1,115 @@
+2018-11-19 12:10:32,853 Configurations: 
+2018-11-19 12:10:49,931 Configurations: 
+2018-11-19 12:10:49,933 Creating folders
+2018-11-19 12:10:49,935 Created folder fuzz_cases
+2018-11-19 12:10:49,938 Created folder seed
+2018-11-19 12:10:49,938 Reading api file
+INFO:root:Configurations: 
+INFO:root:Creating folders
+INFO:root:Created folder fuzz_cases
+INFO:root:Created folder seed
+INFO:root:Reading api file
+2018-11-19 12:13:22,871 Configurations: 
+2018-11-19 12:13:22,872 Creating folders
+2018-11-19 12:13:22,874 Created folder fuzz_cases
+2018-11-19 12:13:22,877 Created folder seed
+2018-11-19 12:13:22,877 Reading api file
+2018-11-19 12:13:48,429 Configurations: 
+2018-11-19 12:13:48,430 Creating folders
+2018-11-19 12:13:48,433 Created folder fuzz_cases
+2018-11-19 12:13:48,435 Created folder seed
+2018-11-19 12:13:48,435 Reading api file
+2018-11-19 12:15:02,324 Configurations: 
+2018-11-19 12:15:02,325 Creating folders
+2018-11-19 12:15:02,327 Created folder fuzz_cases
+2018-11-19 12:15:02,330 Created folder seed
+2018-11-19 12:15:02,330 Reading api file
+2018-11-19 12:15:55,259 Configurations: 
+2018-11-19 12:15:55,260 Creating folders
+2018-11-19 12:15:55,262 Created folder fuzz_cases
+2018-11-19 12:15:55,265 Created folder seed
+2018-11-19 12:15:55,265 Reading api file
+2018-11-19 12:16:02,206 Configurations: 
+2018-11-19 12:16:02,207 Creating folders
+2018-11-19 12:16:02,209 Created folder fuzz_cases
+2018-11-19 12:16:02,211 Created folder seed
+2018-11-19 12:16:02,211 Reading api file
+2018-11-19 12:17:09,867 Configurations: 
+2018-11-19 12:17:09,868 testcase_folder:fuzz_cases
+2018-11-19 12:17:09,868 seed_folder:seed
+2018-11-19 12:17:40,376 Configurations: 
+2018-11-19 12:17:40,376 testcase_folder:fuzz_cases
+2018-11-19 12:17:40,376 seed_folder:seed
+2018-11-19 12:19:14,890 Configurations: 
+2018-11-19 12:19:14,890 testcase_folder:fuzz_cases
+2018-11-19 12:19:14,890 seed_folder:seed
+2018-11-19 12:19:14,890 radamsa_output_amount:1000
+2018-11-19 12:19:14,890 Creating folders
+2018-11-19 12:19:14,895 Created folder fuzz_cases
+2018-11-19 12:19:14,897 Created folder seed
+2018-11-19 12:19:14,897 Reading api file
+2018-11-19 12:39:00,976 Configurations: 
+2018-11-19 12:39:00,976 testcase_folder:fuzz_cases
+2018-11-19 12:39:00,976 seed_folder:seed
+2018-11-19 12:39:00,976 radamsa_output_amount:1000
+2018-11-19 12:39:00,976 Creating folders
+2018-11-19 12:39:00,978 Created folder fuzz_cases
+2018-11-19 12:39:00,982 Created folder seed
+2018-11-19 12:39:00,982 Reading api file
+2018-11-19 12:40:09,893 Configurations: 
+2018-11-19 12:40:09,893 testcase_folder:fuzz_cases
+2018-11-19 12:40:09,893 seed_folder:seed
+2018-11-19 12:40:09,893 radamsa_output_amount:1000
+2018-11-19 12:40:09,893 Creating folders
+2018-11-19 12:40:09,896 Created folder fuzz_cases
+2018-11-19 12:40:09,898 Created folder seed
+2018-11-19 12:40:09,898 Reading api file
+2018-11-19 12:40:27,255 Configurations: 
+2018-11-19 12:40:27,255 testcase_folder:fuzz_cases
+2018-11-19 12:40:27,255 seed_folder:seed
+2018-11-19 12:40:27,255 radamsa_output_amount:1000
+2018-11-19 12:40:27,255 Creating folders
+2018-11-19 12:40:27,258 Created folder fuzz_cases
+2018-11-19 12:40:27,260 Created folder seed
+2018-11-19 12:40:27,260 Reading api file
+2018-11-19 12:40:43,413 Configurations: 
+2018-11-19 12:40:43,413 testcase_folder:fuzz_cases
+2018-11-19 12:40:43,413 seed_folder:seed
+2018-11-19 12:40:43,413 radamsa_output_amount:1000
+2018-11-19 12:40:43,413 Creating folders
+2018-11-19 12:40:43,415 Created folder fuzz_cases
+2018-11-19 12:40:43,418 Created folder seed
+2018-11-19 12:40:43,418 Reading api file
+2018-11-19 12:42:00,545 Configurations: 
+2018-11-19 12:42:00,546 testcase_folder:fuzz_cases
+2018-11-19 12:42:00,546 seed_folder:seed
+2018-11-19 12:42:00,546 radamsa_output_amount:1000
+2018-11-19 12:42:00,546 Creating folders
+2018-11-19 12:42:00,549 Created folder fuzz_cases
+2018-11-19 12:42:00,551 Created folder seed
+2018-11-19 12:42:00,552 Reading api file
+2018-11-19 12:44:46,398 Configurations: 
+2018-11-19 12:44:46,398 testcase_folder:fuzz_cases
+2018-11-19 12:44:46,398 seed_folder:seed
+2018-11-19 12:44:46,398 radamsa_output_amount:1000
+2018-11-19 12:44:46,398 Creating folders
+2018-11-19 12:44:46,401 Created folder fuzz_cases
+2018-11-19 12:44:46,403 Created folder seed
+2018-11-19 12:44:46,403 Reading api file
+2018-11-19 12:45:13,198 Configurations: 
+2018-11-19 12:45:13,198 testcase_folder:fuzz_cases
+2018-11-19 12:45:13,198 seed_folder:seed
+2018-11-19 12:45:13,198 radamsa_output_amount:1000
+2018-11-19 12:45:13,199 Creating folders
+2018-11-19 12:45:13,201 Created folder fuzz_cases
+2018-11-19 12:45:13,204 Created folder seed
+2018-11-19 12:45:13,204 Reading api file
+2018-11-19 14:11:14,716 Configurations: 
+2018-11-19 14:11:14,717 testcase_folder:fuzz_cases
+2018-11-19 14:11:14,717 seed_folder:seed
+2018-11-19 14:11:14,717 radamsa_output_amount:1000
+2018-11-19 14:11:14,717 Creating folders
+2018-11-19 14:11:14,719 Created folder fuzz_cases
+2018-11-19 14:11:14,722 Created folder seed
+2018-11-19 14:11:14,722 Reading api file
+2018-11-19 14:11:14,740 Api version 3.0.0
