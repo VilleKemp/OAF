@@ -1,5 +1,7 @@
 seed/
 fuzz_cases/
+targets/
+targets/*
 
 *.log
 *.yaml
