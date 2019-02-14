@@ -90,8 +90,8 @@ def openapi3(json):
     info_obj = json.get("info")
     openapi = json.get("openapi")
 
-    # Validating that required fields exisist
-    if(paths== None or info_obj== None or openapi== None):
+    # Validating that required fields exist
+    if paths == None or info_obj == None or openapi == None:
         logging.error("Api spec is missing either paths, info or openapi field. These fields are mandatory")
         sys.exit()
 
@@ -100,15 +100,47 @@ def openapi3(json):
     apidesc = info_obj.get("description")
     apiversion = info_obj.get("version")
     logging.info("Generating objects")
-    info = model.info(openapi, apititle, apidesc, apiversion)
+    info = model.Info(openapi, apititle, apidesc, apiversion)
 
     # Creating API object
     api = model.API(info)
 
+    operation_id= None
+    request_body = None
+
+    for endpoint in paths:
+        new_path = model.Path(endpoint)
+        for method in paths[endpoint]:
+
+            if "operationId" in paths[endpoint][method]:
+                operation_id = paths[endpoint][method]["operationId"]
+
+            if "requestBody" in paths[endpoint][method]:
+                request_body = paths[endpoint][method]["requestBody"]
+
+            new_method = model.Method(operation_id, request_body)
+
+            # responses
+            # print(paths[endpoint][method]["responses"])
+            for response in paths[endpoint][method]["responses"]:
+                # print(paths[endpoint][method]["responses"][response])
+                try:
+                    content = paths[endpoint][method]["responses"][response]["content"]
+                except KeyError:
+                    content = None
+                new_response = model.Response(response, content)
+
+            if not new_path.new_method(new_method,method):
+                logging.error("Adding method to path failed")
+
+
+
+
+
 
 def openapi2(api):
     # TODO Implement a parser for openapi 2.x.x
-    logging.info("Api version "+api.get("openapi"))
+    logging.info("Api version " + api.get("openapi"))
     logging.error("Version not yet supported")
 
 
@@ -141,7 +173,7 @@ def main():
     initialize_logger(config.get("logs_folder"))
     logging.info('Configurations: ')
     
-    for key,val in config.items():
+    for key, val in config.items():
         logging.info(key+":"+str(val))
 
     api = readfile(args.api)

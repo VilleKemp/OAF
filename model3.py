@@ -1,5 +1,5 @@
 class API:
-    '''
+    """
     Info: Object, contains API information
         openApiVersion
         apiName
@@ -36,7 +36,7 @@ class API:
             DELETE:
                 ...
 
-    '''
+    """
 
     paths = []
 
@@ -66,8 +66,8 @@ class Parameter:
 
 class Response:
     def __init__(self, code, content):
-        self.code=code
-        self.content=content
+        self.code = code
+        self.content = content
 
 
 class Info:
@@ -97,6 +97,20 @@ class Path:
 
     def create_put(self, param):
         self.put = param
+
+    def new_method(self, obj, name):
+        if name == "get":
+            self.get = obj
+        elif name == "post":
+            self.post = obj
+        elif name == "put":
+            self.put = obj
+        elif name == "delete":
+            self.delete = obj
+        else:
+            return False
+
+        return True
 
 
 class Method:
