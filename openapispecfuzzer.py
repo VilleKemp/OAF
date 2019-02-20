@@ -5,6 +5,7 @@ import subprocess
 import logging
 import os.path
 import sys
+import requests
 import model3 as model
 
 
@@ -67,6 +68,7 @@ def readfile(api):
             logging.error('Error reading api specification')
     return data
 
+
 def handle_ref(ref, schemas):
     # Helper function that takes a ref link and outputs a schema
     # Split the url with / and check if the last word is already in schemas. If so return the schema
@@ -76,8 +78,9 @@ def handle_ref(ref, schemas):
     else:
     # TODO If the schema wasn't in the openapi files schema object, fetch it and add to schema object
         return "", schemas
-    
-            
+
+
+# Parses openap3 spec and returns api object defined in model
 def openapi3(json):
     # Parsing of openapi 3.x.x
     logging.info("Api version "+json.get("openapi"))
@@ -91,7 +94,7 @@ def openapi3(json):
     openapi = json.get("openapi")
 
     # Validating that required fields exist
-    if paths == None or info_obj == None or openapi == None:
+    if paths is None or info_obj is None or openapi is None:
         logging.error("Api spec is missing either paths, info or openapi field. These fields are mandatory")
         sys.exit()
 
@@ -105,7 +108,7 @@ def openapi3(json):
     # Creating API object
     api = model.API(info)
 
-    operation_id= None
+    operation_id = None
     request_body = None
 
     for endpoint in paths:
@@ -120,8 +123,36 @@ def openapi3(json):
 
             new_method = model.Method(operation_id, request_body)
 
-            # responses
-            # print(paths[endpoint][method]["responses"])
+            # Check if method specific server exists. If not add servers object from the root
+            if "servers" in paths[endpoint][method]:
+                new_method.add_server(paths[endpoint][method]["servers"])
+            else:
+                new_method.add_server(json.get("servers"))
+
+            # Check if method specific security exists. If not add default
+            # TODO parse security information to security object
+            if "security" in paths[endpoint][method]:
+                new_method.add_security(paths[endpoint][method]["security"])
+            else:
+                new_method.add_security(json.get("security"))
+
+            # Parse parameters
+            if "parameters" in paths[endpoint][method]:
+                for parameter in paths[endpoint][method]["parameters"]:
+                    par_name = parameter["name"]
+                    par_location = parameter["in"]
+                    par_required = parameter["required"]
+                    if "schema" in parameter:
+                        par_format = parameter["schema"]
+                    elif "style" in parameter:
+                        par_format = parameter["style"]
+                    else:
+                        logging.error("No parameter schema or style detected")
+                        par_format = None
+                    new_parameter = model.Parameter(par_name, par_location, par_required, par_format)
+                    new_method.add_parameter(new_parameter)
+
+            # Responses.
             for response in paths[endpoint][method]["responses"]:
                 # print(paths[endpoint][method]["responses"][response])
                 try:
@@ -129,13 +160,29 @@ def openapi3(json):
                 except KeyError:
                     content = None
                 new_response = model.Response(response, content)
-
-            if not new_path.new_method(new_method,method):
+                new_method.add_response(new_response)
+            if not new_path.new_method(new_method, method):
                 logging.error("Adding method to path failed")
 
+        api.add_path(new_path)
+    logging.info("Spec parsed and api object created")
+    return api
 
 
+# Takes $ref link and returns content
+def ref_content(ref_string, api_json):
+    # reference can be in either spec document (link starts with #) or within other document
+    ref_split = ref_string.split("/")
+    ref = None
+    if ref_split.pop() == "#":
+        # ref is in api object
+        for level in ref_split:
+            api_json = api_json.get(level)
+        ref = api_json
+    else:
+        logging.error("Application currently only supports fetching references from the api spec file.")
 
+    return ref
 
 
 def openapi2(api):
@@ -144,10 +191,31 @@ def openapi2(api):
     logging.error("Version not yet supported")
 
 
+def request_generator(api):
+    # Logging block
+    logging.info("API name: {}".format(api.info.apiName))
+    logging.info("API version: {}".format(api.info.apiVersion))
+    logging.info("OpenAPI documents version: {}".format(api.info.openApiVersion))
+    logging.info("Description: {}".format(api.info.apiDescription))
+    logging.info("API endpoints and their methods")
+    for p in api.paths:
+        logging.info(p.path)
+        if p.get is not None:
+            logging.info("  GET")
+        if p.post is not None:
+            logging.info("  POST")
+        if p.delete is not None:
+            logging.info("  DELETE")
+        if p.put is not None:
+            logging.info("  PUT")
+
+
+
+
 def main():
     # Argparser
     parser = argparse.ArgumentParser(description='Fuzzer')
-    parser.add_argument('-api',dest='api', help='OpenApi file', required=True)
+    parser.add_argument('-api', dest='api', help='OpenApi file', required=True)
     args = parser.parse_args()
 
     # Config
@@ -179,12 +247,14 @@ def main():
     api = readfile(args.api)
     
     if str(api.get("openapi")).startswith("3."):
-        openapi3(api)
+       api = openapi3(api)
     elif str(api.get("openapi")).startswith("2."):
         openapi2(api)
         
     else:
         logging.error("Openapi version isn't 2 or 3. Version: "+api.get("openapi"))
+
+    request_generator(api)
 
 
 if __name__ == "__main__":

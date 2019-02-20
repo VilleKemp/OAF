@@ -58,10 +58,11 @@ class Security:
 
 
 class Parameter:
-    def __init__(self, name, location, required):
+    def __init__(self, name, location, required, format = None):
         self.name = name
         self.location = location
         self.required = required
+        self.format = format
 
 
 class Response:
@@ -72,7 +73,7 @@ class Response:
 
 class Info:
     def __init__(self, openapi_version, api_name, api_description, api_version):
-        self.openApiVersion=openapi_version
+        self.openApiVersion = openapi_version
         self.apiName = api_name
         self.apiDescription = api_description
         self.apiVersion = api_version
