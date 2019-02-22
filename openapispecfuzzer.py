@@ -111,6 +111,7 @@ def openapi3(json):
     operation_id = None
     request_body = None
 
+    # Parsing
     for endpoint in paths:
         new_path = model.Path(endpoint)
         for method in paths[endpoint]:
@@ -174,7 +175,7 @@ def ref_content(ref_string, api_json):
     # reference can be in either spec document (link starts with #) or within other document
     ref_split = ref_string.split("/")
     ref = None
-    if ref_split.pop() == "#":
+    if ref_split.pop(0) == "#":
         # ref is in api object
         for level in ref_split:
             api_json = api_json.get(level)
@@ -210,6 +211,26 @@ def request_generator(api):
             logging.info("  PUT")
 
 
+def ref_parser(datadict, full_dict):
+    # parses over the dict and replaces parent of a $ref with result of ref_content
+
+    # deepcopy before data manipulation
+    from copy import deepcopy
+    newdict = deepcopy(datadict)
+
+    for key, value in datadict.items():
+        # recurse into nested dicts
+        if isinstance(value, dict):
+            if value.get("$ref"):
+                newdict[key] = ref_content(value.get("$ref"), full_dict)
+            else:
+                newdict[key] = ref_parser(datadict[key], full_dict)
+        #
+        '''
+        elif key == "$ref":
+            newdict[key] = ref_content(value, full_dict)
+        '''
+    return newdict
 
 
 def main():
@@ -245,9 +266,13 @@ def main():
         logging.info(key+":"+str(val))
 
     api = readfile(args.api)
-    
+    # Parser doesn't work right if refs have nested refs. Calling multiple times fixes this.
+    # TODO fix
+    api = ref_parser(api, api)
+    api = ref_parser(api, api)
+
     if str(api.get("openapi")).startswith("3."):
-       api = openapi3(api)
+        api = openapi3(api)
     elif str(api.get("openapi")).startswith("2."):
         openapi2(api)
         
