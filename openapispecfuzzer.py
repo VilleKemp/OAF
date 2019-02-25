@@ -7,6 +7,12 @@ import os.path
 import sys
 import requests
 import model3 as model
+import req as req_model
+
+##GLOBALS##
+ATTEMPTS = 20
+
+##
 
 
 def initialize_logger(output_dir):
@@ -15,7 +21,7 @@ def initialize_logger(output_dir):
      
     # create console handler and set level to info
     handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO)
+    handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
@@ -125,10 +131,13 @@ def openapi3(json):
             new_method = model.Method(operation_id, request_body)
 
             # Check if method specific server exists. If not add servers object from the root
+            # TODO remove parameters from url
             if "servers" in paths[endpoint][method]:
-                new_method.add_server(paths[endpoint][method]["servers"])
+                new_method.add_server(paths[endpoint][method]["servers"]["url"])
             else:
-                new_method.add_server(json.get("servers"))
+                for s in json.get("servers"):
+                    new_method.add_server(s["url"])
+
 
             # Check if method specific security exists. If not add default
             # TODO parse security information to security object
@@ -143,8 +152,13 @@ def openapi3(json):
                     par_name = parameter["name"]
                     par_location = parameter["in"]
                     par_required = parameter["required"]
+                    # TODO parse through schema and style and fetch relevant component?
                     if "schema" in parameter:
-                        par_format = parameter["schema"]
+                        # TODO Currently does not take the format field from schema.
+                        if parameter["schema"].get("type"):
+                            par_format = parameter["schema"].get("type")
+                        else:
+                            par_format = parameter["schema"]
                     elif "style" in parameter:
                         par_format = parameter["style"]
                     else:
@@ -209,6 +223,74 @@ def request_generator(api):
             logging.info("  DELETE")
         if p.put is not None:
             logging.info("  PUT")
+    legit_requests = []
+    # Should this be good_values = {"int": [], "str": [] } ?
+    good_values = []
+
+
+
+
+    '''
+    amount of requests = amount of methods in paths
+    
+    
+    '''
+    # TODO tässä on aivopieru
+    while len(legit_requests) != api.amount():
+        # Go over each path
+        for path in api.paths:
+        # Give path to create_request
+            result = create_request(path, good_values)
+            # If creation vas succesfull add to legit_requests
+            if result is not False:
+                legit_requests.append(result)
+                # Save all values that went through.
+                for p in result.parameters:
+
+                    good_values.append(p.value)
+
+
+
+
+        #legit_requests.append(create_request(path))
+    logging.info("Generated {} legit requests".format(len(legit_requests)))
+    logging.error("END OF CODE. Lazy bastard code more")
+
+
+def create_request(path, good_values=None):
+    '''
+    # Creates a functional request
+    Constructs a req object
+    sets a dummy value to parameters if they exists
+    sends the requests
+    if response code is 2xx returns the request. Otherwise loops
+    '''
+
+    method = path.get_methods()
+    method_obj = path.endpoint()
+    for method, m in method_obj.items():
+        if m.has_request is not True:
+            url = req_model.Url(m.server, path.path)
+            parameters = m.parameters
+        # TODO find out the headers
+            header = None
+        # TODO content
+            content = None
+            req = req_model.Req(url, parameters, method, header, content)
+            req.set_dummy_values()
+            looping = True
+            for i in range(ATTEMPTS):
+                logging.debug("Sending to {}.".format(path.path))
+                code, r = req.send()
+                logging.debug("Received code {}".format(code))
+                if code is "200":
+                    m.has_request = True
+                    return req
+                else:
+
+                    req.set_dummy_values()
+
+        return False
 
 
 def ref_parser(datadict, full_dict):
@@ -270,7 +352,7 @@ def main():
     # TODO fix
     api = ref_parser(api, api)
     api = ref_parser(api, api)
-
+    print(api)
     if str(api.get("openapi")).startswith("3."):
         api = openapi3(api)
     elif str(api.get("openapi")).startswith("2."):

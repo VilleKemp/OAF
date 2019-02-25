@@ -46,6 +46,12 @@ class API:
     def add_path(self, path):
         self.paths.append(path)
 
+    def amount(self):
+        amount = 0
+        for path in self.paths:
+            amount += len(path.get_methods())
+        return amount
+
 
 class Security:
     def __init__(self, type, name, location, scheme, flows, openidconnecturl):
@@ -58,11 +64,12 @@ class Security:
 
 
 class Parameter:
-    def __init__(self, name, location, required, format = None):
+    def __init__(self, name, location, required, format=None, value=None):
         self.name = name
         self.location = location
         self.required = required
         self.format = format
+        self.value = value
 
 
 class Response:
@@ -113,6 +120,30 @@ class Path:
 
         return True
 
+    def endpoint(self):
+        epoints = {}
+        if self.get is not None:
+            epoints["GET"] = self.get
+        if self.put is not None:
+            epoints["PUT"] = self.put
+        if self.delete is not None:
+            epoints["DELETE"] = self.delete
+        if self.post is not None:
+            epoints["POST"] = self.post
+        return epoints
+
+    def get_methods(self):
+        methods = []
+        if self.get is not None:
+            methods.append("GET")
+        if self.put is not None:
+            methods.append("PUT")
+        if self.delete is not None:
+            methods.append("DELETE")
+        if self.post is not None:
+            methods.append("POST")
+        return methods
+
 
 class Method:
     parameters = []
@@ -123,6 +154,7 @@ class Method:
     def __init__(self, operationid, requestbody):
         self.operationID = operationid
         self.requestBody = requestbody
+        self.has_request = False
 
     def add_parameter(self, parameter):
         self.parameters.append(parameter)
@@ -135,5 +167,8 @@ class Method:
 
     def add_security(self, parameter):
         self.security.append(parameter)
+
+    def set_has_request(self, param):
+        self.has_request = param
 
 
