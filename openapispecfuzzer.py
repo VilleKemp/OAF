@@ -8,7 +8,7 @@ import sys
 import requests
 import model3 as model
 import req as req_model
-
+import parsers
 ##GLOBALS##
 ATTEMPTS = 20
 
@@ -59,7 +59,7 @@ def ramdasa(amount, testcase_folder, seed_folder):
 def create_folders(folders):
     # Create all the folders that the program needs for working
     for folder in folders:
-        print(subprocess.check_output(['mkdir','-p',folder]))
+        print(subprocess.check_output(['mkdir', '-p', folder]))
 
 
 def readfile(api):
@@ -86,104 +86,6 @@ def handle_ref(ref, schemas):
         return "", schemas
 
 
-# Parses openap3 spec and returns api object defined in model
-def openapi3(json):
-    # Parsing of openapi 3.x.x
-    logging.info("Api version "+json.get("openapi"))
-
-    # Parsing objects out from api file
-    
-    logging.info("Parsing")
-    # These are REQUIRED
-    paths = json.get("paths")
-    info_obj = json.get("info")
-    openapi = json.get("openapi")
-
-    # Validating that required fields exist
-    if paths is None or info_obj is None or openapi is None:
-        logging.error("Api spec is missing either paths, info or openapi field. These fields are mandatory")
-        sys.exit()
-
-    # Creating info object
-    apititle = info_obj.get("title")
-    apidesc = info_obj.get("description")
-    apiversion = info_obj.get("version")
-    logging.info("Generating objects")
-    info = model.Info(openapi, apititle, apidesc, apiversion)
-
-    # Creating API object
-    api = model.API(info)
-
-    operation_id = None
-    request_body = None
-
-    # Parsing
-    for endpoint in paths:
-        new_path = model.Path(endpoint)
-        for method in paths[endpoint]:
-
-            if "operationId" in paths[endpoint][method]:
-                operation_id = paths[endpoint][method]["operationId"]
-
-            if "requestBody" in paths[endpoint][method]:
-                request_body = paths[endpoint][method]["requestBody"]
-
-            new_method = model.Method(operation_id, request_body)
-
-            # Check if method specific server exists. If not add servers object from the root
-            # TODO remove parameters from url
-            if "servers" in paths[endpoint][method]:
-                new_method.add_server(paths[endpoint][method]["servers"]["url"])
-            else:
-                for s in json.get("servers"):
-                    new_method.add_server(s["url"])
-
-
-            # Check if method specific security exists. If not add default
-            # TODO parse security information to security object
-            if "security" in paths[endpoint][method]:
-                new_method.add_security(paths[endpoint][method]["security"])
-            else:
-                new_method.add_security(json.get("security"))
-
-            # Parse parameters
-            if "parameters" in paths[endpoint][method]:
-                for parameter in paths[endpoint][method]["parameters"]:
-                    par_name = parameter["name"]
-                    par_location = parameter["in"]
-                    par_required = parameter["required"]
-                    # TODO parse through schema and style and fetch relevant component?
-                    if "schema" in parameter:
-                        # TODO Currently does not take the format field from schema.
-                        if parameter["schema"].get("type"):
-                            par_format = parameter["schema"].get("type")
-                        else:
-                            par_format = parameter["schema"]
-                    elif "style" in parameter:
-                        par_format = parameter["style"]
-                    else:
-                        logging.error("No parameter schema or style detected")
-                        par_format = None
-                    new_parameter = model.Parameter(par_name, par_location, par_required, par_format)
-                    new_method.add_parameter(new_parameter)
-
-            # Responses.
-            for response in paths[endpoint][method]["responses"]:
-                # print(paths[endpoint][method]["responses"][response])
-                try:
-                    content = paths[endpoint][method]["responses"][response]["content"]
-                except KeyError:
-                    content = None
-                new_response = model.Response(response, content)
-                new_method.add_response(new_response)
-            if not new_path.new_method(new_method, method):
-                logging.error("Adding method to path failed")
-
-        api.add_path(new_path)
-    logging.info("Spec parsed and api object created")
-    return api
-
-
 # Takes $ref link and returns content
 def ref_content(ref_string, api_json):
     # reference can be in either spec document (link starts with #) or within other document
@@ -200,13 +102,7 @@ def ref_content(ref_string, api_json):
     return ref
 
 
-def openapi2(api):
-    # TODO Implement a parser for openapi 2.x.x
-    logging.info("Api version " + api.get("openapi"))
-    logging.error("Version not yet supported")
-
-
-def request_generator(api):
+def request_generator(api, args):
     # Logging block
     logging.info("API name: {}".format(api.info.apiName))
     logging.info("API version: {}".format(api.info.apiVersion))
@@ -223,12 +119,10 @@ def request_generator(api):
             logging.info("  DELETE")
         if p.put is not None:
             logging.info("  PUT")
+    logging.debug("Total number of endpoints is {}".format(api.amount()))
     legit_requests = []
     # Should this be good_values = {"int": [], "str": [] } ?
     good_values = []
-
-
-
 
     '''
     amount of requests = amount of methods in paths
@@ -240,8 +134,8 @@ def request_generator(api):
         # Go over each path
         for path in api.paths:
         # Give path to create_request
-            result = create_request(path, good_values)
-            # If creation vas succesfull add to legit_requests
+            result = create_request(path, good_values, args)
+            # If creation was successful add to legit_requests
             if result is not False:
                 legit_requests.append(result)
                 # Save all values that went through.
@@ -249,15 +143,12 @@ def request_generator(api):
 
                     good_values.append(p.value)
 
-
-
-
         #legit_requests.append(create_request(path))
     logging.info("Generated {} legit requests".format(len(legit_requests)))
     logging.error("END OF CODE. Lazy bastard code more")
 
 
-def create_request(path, good_values=None):
+def create_request(path, args, good_values=None):
     '''
     # Creates a functional request
     Constructs a req object
@@ -276,12 +167,14 @@ def create_request(path, good_values=None):
             header = None
         # TODO content
             content = None
-            req = req_model.Req(url, parameters, method, header, content)
+
+            security = m.security
+            req = req_model.Req(url, parameters, method, header, content, security)
             req.set_dummy_values()
             looping = True
             for i in range(ATTEMPTS):
                 logging.debug("Sending to {}.".format(path.path))
-                code, r = req.send()
+                code, r = req.send(args)
                 logging.debug("Received code {}".format(code))
                 if code is "200":
                     m.has_request = True
@@ -319,6 +212,10 @@ def main():
     # Argparser
     parser = argparse.ArgumentParser(description='Fuzzer')
     parser.add_argument('-api', dest='api', help='OpenApi file', required=True)
+    parser.add_argument('-apikey', dest='apikey',
+                        help='Api key. Used if the target api has an api key security scheme')
+    parser.add_argument('-server', dest='server',
+                        help='Parameter given to this argument will replace specs server variable')
     args = parser.parse_args()
 
     # Config
@@ -334,7 +231,9 @@ def main():
     # How many times do we run radamsa
     "radamsa_output_amount": 1000,
     # Idea at this point is to mark parts of the requests that are going to be fuzzed with some type of identifiers. With this variable user can set it themselves.
-    "fuzz_variable_identifier": "$" 
+    "fuzz_variable_identifier": "$",
+    # folder containing specs
+    "target_folder": "targets"
     }
     
     ################
@@ -352,16 +251,15 @@ def main():
     # TODO fix
     api = ref_parser(api, api)
     api = ref_parser(api, api)
-    print(api)
+
     if str(api.get("openapi")).startswith("3."):
-        api = openapi3(api)
+        api = parsers.openapi3(api,args)
     elif str(api.get("openapi")).startswith("2."):
-        openapi2(api)
-        
+        parsers.openapi2(api)
     else:
         logging.error("Openapi version isn't 2 or 3. Version: "+api.get("openapi"))
 
-    request_generator(api)
+    request_generator(api, args)
 
 
 if __name__ == "__main__":

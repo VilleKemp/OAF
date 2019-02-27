@@ -54,22 +54,25 @@ class API:
 
 
 class Security:
-    def __init__(self, type, name, location, scheme, flows, openidconnecturl):
-        self.type = type
+    def __init__(self, type_, name, location, scheme, flows, openidconnecturl, apikey=None):
+        self.type_ = type_
         self.name = name
         self.location = location
         self.scheme = scheme
         self.flows = flows
         self.openidconnecturl = openidconnecturl
+        self.apikey = apikey
 
 
 class Parameter:
-    def __init__(self, name, location, required, format=None, value=None):
+    def __init__(self, name, location, required, format_=None, value=None, options=None):
         self.name = name
         self.location = location
         self.required = required
-        self.format = format
+        self.format = format_
         self.value = value
+        # If parameter has only specific values it is allowed ot be they are stored here
+        self.options = options
 
 
 class Response:
