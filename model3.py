@@ -1,3 +1,6 @@
+import logging
+
+
 class API:
     """
     Info: Object, contains API information
@@ -63,16 +66,20 @@ class Security:
         self.openidconnecturl = openidconnecturl
         self.apikey = apikey
 
+    def get_details(self):
+        return self.type_, self.name, self.location
+
 
 class Parameter:
     def __init__(self, name, location, required, format_=None, value=None, options=None):
         self.name = name
         self.location = location
         self.required = required
-        self.format = format_
+        self.format_ = format_
         self.value = value
         # If parameter has only specific values it is allowed ot be they are stored here
         self.options = options
+        logging.debug("     Parameter {} created".format(self.name))
 
 
 class Response:
@@ -149,15 +156,15 @@ class Path:
 
 
 class Method:
-    parameters = []
-    responses = []
-    security = []
-    server = []
 
     def __init__(self, operationid, requestbody):
         self.operationID = operationid
         self.requestBody = requestbody
         self.has_request = False
+        self.parameters = []
+        self.responses = []
+        self.security = []
+        self.server = []
 
     def add_parameter(self, parameter):
         self.parameters.append(parameter)
@@ -173,5 +180,8 @@ class Method:
 
     def set_has_request(self, param):
         self.has_request = param
+
+    def get_security(self):
+        return self.security
 
 

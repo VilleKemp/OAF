@@ -111,6 +111,7 @@ def request_generator(api, args):
     logging.info("API endpoints and their methods")
     for p in api.paths:
         logging.info(p.path)
+        '''
         if p.get is not None:
             logging.info("  GET")
         if p.post is not None:
@@ -119,6 +120,11 @@ def request_generator(api, args):
             logging.info("  DELETE")
         if p.put is not None:
             logging.info("  PUT")
+        '''
+        for method, content in p.endpoint().items():
+            logging.info("      {}".format(method))
+            for param in content.parameters:
+                logging.info("          {} {} {}".format(param.name, param.format_, param.location))
     logging.debug("Total number of endpoints is {}".format(api.amount()))
     legit_requests = []
     # Should this be good_values = {"int": [], "str": [] } ?
@@ -134,9 +140,10 @@ def request_generator(api, args):
         # Go over each path
         for path in api.paths:
         # Give path to create_request
-            result = create_request(path, good_values, args)
+            result = create_request(path, args, good_values)
             # If creation was successful add to legit_requests
             if result is not False:
+
                 legit_requests.append(result)
                 # Save all values that went through.
                 for p in result.parameters:
@@ -176,8 +183,12 @@ def create_request(path, args, good_values=None):
                 logging.debug("Sending to {}.".format(path.path))
                 code, r = req.send(args)
                 logging.debug("Received code {}".format(code))
-                if code is "200":
+                if code == 200:
                     m.has_request = True
+                    logging.debug("Good request created {}{}{} {}".format(req.url.base,
+                                                                          req.url.endpoint, req.url.parameter,
+                                                                          req.method))
+
                     return req
                 else:
 
@@ -251,7 +262,8 @@ def main():
     # TODO fix
     api = ref_parser(api, api)
     api = ref_parser(api, api)
-
+    with open('modified.json', 'w') as outfile:
+        json.dump(api, outfile)
     if str(api.get("openapi")).startswith("3."):
         api = parsers.openapi3(api,args)
     elif str(api.get("openapi")).startswith("2."):

@@ -11,9 +11,9 @@ def create_security(security):
     s_flows = None
     s_ourl = None
     s_apikey = None
-    logging.debug("Creating security object")
-    logging.debug("Object is {}".format(security))
-    logging.debug("Type is {}".format(s_type))
+    # logging.debug("Creating security object")
+    # logging.debug("Object is {}".format(security))
+    # logging.debug("Type is {}".format(s_type))
     if s_type == "apiKey":
         s_name = security.get("name")
         s_location = security.get("in")
@@ -31,6 +31,7 @@ def create_security(security):
 
 # Parses openap3 spec and returns api object defined in model
 def openapi3(json, args):
+
     # Parsing of openapi 3.x.x
     logging.info("Api version " + json.get("openapi"))
 
@@ -117,8 +118,11 @@ def openapi3(json, args):
 
             # ################
             # #####PARAMETER PARSING ##################
+            # TODO Seems to return incorrect parameter locations
+            logging.debug("     Parsing parameters")
             if "parameters" in paths[endpoint][method]:
                 for parameter in paths[endpoint][method]["parameters"]:
+                    logging.debug("Parameter found {}".format(parameter))
                     par_name = parameter["name"]
                     par_location = parameter["in"]
                     par_required = parameter["required"]
@@ -148,7 +152,9 @@ def openapi3(json, args):
 
                                     par_value.append(model.Parameter(par_name_, par_location_,
                                                                      par_required_, par_format_, par_options_))
-
+                                # Add array parameter containing other parameters to method
+                                new_method.add_parameter(model.Parameter(par_name, par_location,
+                                                                         par_required, par_format, par_value))
                         else:
                             par_format = parameter["schema"]
 
@@ -158,7 +164,14 @@ def openapi3(json, args):
                         logging.error("No parameter schema or style detected")
                         par_format = None
                     new_parameter = model.Parameter(par_name, par_location, par_required, par_format)
-                    new_method.add_parameter(new_parameter)
+
+                    allowed = True
+                    for par in new_method.parameters:
+                        if par.name == new_parameter.name:
+                            allowed = False
+                    if allowed is True:
+                        new_method.add_parameter(new_parameter)
+            logging.debug("Parameters {}".format(new_method.parameters))
             ####################################
             # #######RESPONSE PARSING . ####################
             for response in paths[endpoint][method]["responses"]:
