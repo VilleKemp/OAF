@@ -1,5 +1,5 @@
 import logging
-
+import json
 
 class API:
     """
@@ -56,6 +56,72 @@ class API:
         return amount
 
 
+class RequestBody:
+    '''
+    type: json. xml etc OpenApis requestBody objects contents key
+    required: OpenApis requestBody objects required field if it exists
+    params: list of parameter objects
+
+    '''
+    def __init__(self, type_, required, params=None ):
+        self.type_ = type_
+        self.required = required
+        if params is not None:
+            self.params = params
+        else:
+            self.params = []
+
+    def add_parameter(self, p):
+        self.params.append(p)
+
+    def print_info(self):
+        logging.debug("RequestBody debug print\nType: {}\nRequired:{}\nParameter:{}".format(
+            self.type_, self.required, self.params
+        ))
+        for p in self.params:
+            p.print_info()
+
+    def json(self):
+        # returns a json version of the requestBody
+        if self.type_ != "application/json":
+            return None
+        else:
+            # TODO JATKA TÄSTÄ. Generoi json niin pitäis toimia?
+            rdict = {}
+            for p in self.params:
+                if p.format_ == "object":
+                    rdict[p.name] = self.object_json(p)
+                elif p.format_ == "array":
+                    rdict[p.name] = self.array_json(p)
+                else:
+                    rdict[p.name] = p.value
+            return json.dumps(rdict)
+
+    def array_json(self, param):
+        return_array = []
+        for p in param.value:
+            if p.format_ == "object":
+                return_array.append(self.object_json(p))
+            elif p.format_ == "array":
+                return_array.append(self.array_json(p))
+            else:
+                nd = {}
+                nd[p.name] = p.value
+                return_array.append(nd)
+        return return_array
+
+    def object_json(self, param):
+        return_dict = {}
+        for p in param.value:
+            if p.format_ == "object":
+                return_dict[p.name] = self.object_json(p)
+            elif p.format_ == "array":
+                return_dict[p.name] = self.array_json(p)
+            else:
+                return_dict[p.name] = p.value
+        return return_dict
+
+
 class Security:
     def __init__(self, type_, name, location, scheme, flows, openidconnecturl, apikey=None):
         self.type_ = type_
@@ -80,6 +146,16 @@ class Parameter:
         # If parameter has only specific values it is allowed ot be they are stored here
         self.options = options
         logging.debug("     Parameter {} created".format(self.name))
+        logging.debug("         {}".format(self.print_info()))
+
+    # Debugging function
+    def print_info(self):
+        logging.debug("Name: {} \n Location: {}\n Required: {}\n Format: {}\n Value:{}\n Options: {}".format(
+            self.name, self.location, self.required, self.format_, self.value, self.options
+        ))
+
+    def set_value(self, val):
+        self.value = val
 
 
 class Response:
@@ -157,9 +233,9 @@ class Path:
 
 class Method:
 
-    def __init__(self, operationid, requestbody):
+    def __init__(self, operationid):
         self.operationID = operationid
-        self.requestBody = requestbody
+        self.requestBody = []
         self.has_request = False
         self.parameters = []
         self.responses = []
@@ -184,4 +260,8 @@ class Method:
     def get_security(self):
         return self.security
 
+    def add_request_body(self, r):
+        self.requestBody.append(r)
 
+    def replace_request_body(self,r):
+        self.requestBody = r

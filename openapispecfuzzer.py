@@ -91,6 +91,7 @@ def ref_content(ref_string, api_json):
     # reference can be in either spec document (link starts with #) or within other document
     ref_split = ref_string.split("/")
     ref = None
+    ref_name = ref_split[len(ref_split)-1]
     if ref_split.pop(0) == "#":
         # ref is in api object
         for level in ref_split:
@@ -99,7 +100,7 @@ def ref_content(ref_string, api_json):
     else:
         logging.error("Application currently only supports fetching references from the api spec file.")
 
-    return ref
+    return ref, ref_name
 
 
 def request_generator(api, args):
@@ -173,7 +174,7 @@ def create_request(path, args, good_values=None):
         # TODO find out the headers
             header = None
         # TODO content
-            content = None
+            content = m.requestBody
 
             security = m.security
             req = req_model.Req(url, parameters, method, header, content, security)
@@ -208,7 +209,12 @@ def ref_parser(datadict, full_dict):
         # recurse into nested dicts
         if isinstance(value, dict):
             if value.get("$ref"):
-                newdict[key] = ref_content(value.get("$ref"), full_dict)
+                content, name = ref_content(value.get("$ref"), full_dict)
+                # idea is to replace the parent node of $ref with a dict schemaname: content
+                dict2 = dict()
+                dict2[name] = content
+                newdict[key] = dict2
+                ref_content(value.get("$ref"), full_dict)
             else:
                 newdict[key] = ref_parser(datadict[key], full_dict)
         #

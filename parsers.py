@@ -1,6 +1,8 @@
 import logging
 import model3 as model
-
+import sys
+# TODO used while debugging. Remove if not needed
+import time
 
 def create_security(security):
     # Generates a security object from security dict.
@@ -27,6 +29,109 @@ def create_security(security):
 
     return model.Security(s_type, s_name, s_location,
                                                    s_scheme, s_flows, s_ourl, s_apikey)
+
+
+def handle_object(val, name=None):
+    '''
+    Handles variables that are type object.
+    Goes over its "properties" field and generates Parameter object for each of them.
+    Returns a Parameter object with value field containing other Parameters
+
+
+    :param val:
+    :return: Parameter object that has a type of object and value containing its parameters
+    as Parameter objects
+    '''
+    parameters = []
+    required_parameters = val.get("required")
+    if required_parameters is None:
+        required_parameters = []
+    #
+    for key, value in val.get("properties").items():
+        print(key, value)
+        if value.get("type") == "object":
+            parameters.append(handle_object(value))
+        elif value.get("type") == "array":
+            parameters.append(handle_array(value))
+        else:
+            parameters.append(model.Parameter(key, "requestBody",
+                                              key in required_parameters, value.get("type"), None, value.get("enum")))
+    # TODO We need the objects name in order to create proper requests!
+    obj_parameter = model.Parameter(name, "requestBody", val.get("required"), val.get("type"), parameters)
+    print("###############################")
+    obj_parameter.print_info()
+    print("################################")
+    return obj_parameter
+
+
+def handle_array(val, name=None):
+    '''
+    Handles array parameters. Logic is same as in handle object
+    :param val:
+    :return:
+    '''
+    parameters = []
+    # TODO check if array can ever have a required field
+    required_parameters = val.get("required")
+
+    for key, value in val.get("items").items():
+        print("!!!!!!!!!!!!!!!!!!")
+        print(val.get("items"))
+        print("!!!!!!!!!!!!!!!!!!!!")
+
+        if value.get("type") == "object":
+            parameters.append(handle_object(value))
+        elif value.get("type") == "array":
+            parameters.append(handle_array(value))
+        else:
+            parameters.append(model.Parameter(key, "requestBody",
+                                              key in required_parameters, value.get("type"), None, value.get("enum")))
+
+    array_parameter = model.Parameter(name, "requestBody", val.get("required"), val.get("type"), parameters)
+
+    return array_parameter
+
+
+# Create requestBody object
+def create_request_body(rb):
+    rbodies = []
+    # If the requestBody was a reference current rb object isn't in right form. It has to be checked and fixed
+
+    if rb.get("content") is None:
+        name = next(iter(rb))
+        rb = rb[name]
+    logging.debug("Creating requestbody")
+    logging.debug("rb is : {}".format(rb))
+
+    required = rb.get("required")
+    # loop the content. Create new requestbody object for each parameter
+    for key, value in rb.get("content").items():
+        logging.debug("\nProcessing {}".format(key))
+        new_rbody = model.RequestBody(key, required)
+        # if schema was a $ref there is one more layer before we get to types etc
+        schema = value.get("schema")
+        s_name = None
+        if schema.get("type") is None:
+            s_name = next(iter(schema))
+            schema = schema[s_name]
+
+        # ###### REQUESTBODY SCHEMA PARSING ###################
+        logging.debug("\nSchema {}".format(schema))
+        if schema.get("type") == "object":
+            new_parameter = handle_object(schema, s_name)
+        elif schema.get("type") == "array":
+            new_parameter = handle_array(schema, s_name)
+        else:
+            new_parameter = model.Parameter(schema.get("name"), "requestBody", schema.get("required"), schema.get("type"),
+                                            None, schema.get("enum"))
+
+        new_rbody.add_parameter(new_parameter)
+
+        new_rbody.print_info()
+
+        rbodies.append(new_rbody)
+
+    return rbodies
 
 
 # Parses openap3 spec and returns api object defined in model
@@ -68,14 +173,13 @@ def openapi3(json, args):
         for method in paths[endpoint]:
             # TODO Parse all the x- fields from method
             logging.debug("     Parsing method {}".format(method))
+            new_method = model.Method(operation_id)
             if "operationId" in paths[endpoint][method]:
                 operation_id = paths[endpoint][method]["operationId"]
 
             if "requestBody" in paths[endpoint][method]:
-                request_body = paths[endpoint][method]["requestBody"]
-
-            new_method = model.Method(operation_id, request_body)
-
+                request_body_list = create_request_body(paths[endpoint][method]["requestBody"])
+                new_method.replace_request_body(request_body_list)
             # Check if method specific server exists. If not add servers object from the root
             # TODO remove parameters from url
             # If args server exists. Only add that to the server variable
@@ -122,7 +226,7 @@ def openapi3(json, args):
             logging.debug("     Parsing parameters")
             if "parameters" in paths[endpoint][method]:
                 for parameter in paths[endpoint][method]["parameters"]:
-                    logging.debug("Parameter found {}".format(parameter))
+                    #logging.debug("Parameter found {}".format(parameter))
                     par_name = parameter["name"]
                     par_location = parameter["in"]
                     par_required = parameter["required"]
