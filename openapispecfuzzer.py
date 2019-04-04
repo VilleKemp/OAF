@@ -12,7 +12,19 @@ import parsers
 ##GLOBALS##
 ATTEMPTS = 20
 
-##
+# TODo 4.4
+'''
+Ainakin tag kenttä luodaan väärin. Tag nimen sijaan luodaan objekti null: ...
+Osa endpointeista ei toimi ilman OAUTH
+Osalle muuttujista ei generoida arvoja. Näyttäisi liittyvän listojen sisäisiin funktioihin
+Pitää kerätä Opeanpi parameter format kenttä. Nyt ei osaa generoida random date-time
+Nyt 9/20 saa ulos 200
+3/20 415 jonka pitäisi olla Oauthin vika
+404 User get. 
+401 authentication erroria 
+400 koska date time format väärä
+
+'''
 
 
 def initialize_logger(output_dir):
@@ -144,8 +156,8 @@ def request_generator(api, args):
             result = create_request(path, args, good_values)
             # If creation was successful add to legit_requests
             if result is not False:
-
                 legit_requests.append(result)
+                logging.debug("Good request received. There are {} good requests out of {} total".format(len(legit_requests), api.amount()))
                 # Save all values that went through.
                 for p in result.parameters:
 
@@ -171,29 +183,34 @@ def create_request(path, args, good_values=None):
         if m.has_request is not True:
             url = req_model.Url(m.server, path.path)
             parameters = m.parameters
-        # TODO find out the headers
+        # TODO Remove this if not used
             header = None
         # TODO content
             content = m.requestBody
+            logging.info("Methods requestBody is {}".format(content))
+            for r in content:
+                logging.info(r.print_info())
 
             security = m.security
-            req = req_model.Req(url, parameters, method, header, content, security)
-            req.set_dummy_values()
+            requ = req_model.Req(url, parameters, method, header, content, security)
+            requ.set_dummy_values()
             looping = True
             for i in range(ATTEMPTS):
-                logging.debug("Sending to {}.".format(path.path))
-                code, r = req.send(args)
+                logging.debug("Sending to {}".format(path.path))
+                code, r = requ.send(args)
                 logging.debug("Received code {}".format(code))
+                logging.debug("Message: {}".format(r.text))
+                # Currently taking 200 and 401 as legit. 401 means authorization error, usually due to not oaut implementation
                 if code == 200:
                     m.has_request = True
-                    logging.debug("Good request created {}{}{} {}".format(req.url.base,
-                                                                          req.url.endpoint, req.url.parameter,
-                                                                          req.method))
+                    logging.debug("Good request created {}{}{} {}".format(requ.url.base,
+                                                                          requ.url.endpoint, requ.url.parameter,
+                                                                          requ.method))
 
-                    return req
+                    return requ
                 else:
 
-                    req.set_dummy_values()
+                    requ.set_dummy_values()
 
         return False
 
@@ -233,6 +250,8 @@ def main():
                         help='Api key. Used if the target api has an api key security scheme')
     parser.add_argument('-server', dest='server',
                         help='Parameter given to this argument will replace specs server variable')
+    parser.add_argument('-skip', dest='skip',
+                        help='Skips specified endpoints. Give endpoints in format ep1,ep2,epx')
     args = parser.parse_args()
 
     # Config
@@ -268,8 +287,10 @@ def main():
     # TODO fix
     api = ref_parser(api, api)
     api = ref_parser(api, api)
+    # Writes the modified json as modified.json.
     with open('modified.json', 'w') as outfile:
         json.dump(api, outfile)
+
     if str(api.get("openapi")).startswith("3."):
         api = parsers.openapi3(api,args)
     elif str(api.get("openapi")).startswith("2."):

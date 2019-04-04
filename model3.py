@@ -80,19 +80,21 @@ class RequestBody:
         ))
         for p in self.params:
             p.print_info()
-
+    # TODO Check how arrays are formed
     def json(self):
         # returns a json version of the requestBody
         if self.type_ != "application/json":
             return None
         else:
-            # TODO JATKA TÄSTÄ. Generoi json niin pitäis toimia?
+            #
             rdict = {}
             for p in self.params:
                 if p.format_ == "object":
-                    rdict[p.name] = self.object_json(p)
+                    # In cases of object combine current dict with the object_json functions return dict
+                    rdict = {**rdict ,**self.object_json(p)}
                 elif p.format_ == "array":
-                    rdict[p.name] = self.array_json(p)
+                    # If the object is an array we create an array insted of dict
+                    rdict = self.array_json(p)
                 else:
                     rdict[p.name] = p.value
             return json.dumps(rdict)
@@ -114,7 +116,7 @@ class RequestBody:
         return_dict = {}
         for p in param.value:
             if p.format_ == "object":
-                return_dict[p.name] = self.object_json(p)
+                return_dict = {**return_dict ,**self.object_json(p)}
             elif p.format_ == "array":
                 return_dict[p.name] = self.array_json(p)
             else:
@@ -150,7 +152,7 @@ class Parameter:
 
     # Debugging function
     def print_info(self):
-        logging.debug("Name: {} \n Location: {}\n Required: {}\n Format: {}\n Value:{}\n Options: {}".format(
+        logging.debug("Name: {} \n Location: {}\n Required: {}\n Format: {}\n Value: {}\n Options: {}".format(
             self.name, self.location, self.required, self.format_, self.value, self.options
         ))
 

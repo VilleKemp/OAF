@@ -41,26 +41,48 @@ def handle_object(val, name=None):
     :param val:
     :return: Parameter object that has a type of object and value containing its parameters
     as Parameter objects
+
+    #TODO this and handle array must take in to consideration the following
+    category case. Joskus key on {'Category': {'title': 'Pet category', 'type': 'object', 'properties': {'id': {'type': 'integer', 'format': 'int64'}, 'name': {'type': 'string'}}, 'description': 'A category for a pet', 'example': {'name': 'name', 'id': 6}, 'xml': {'name': 'Category'}}}
+ => jos type ei löydy mene taso alaspäin
+    SHOULD WORK.
+
+ joskus tietoa on xml objectin alla.
+ WIP
     '''
     parameters = []
     required_parameters = val.get("required")
     if required_parameters is None:
         required_parameters = []
-    #
+
     for key, value in val.get("properties").items():
+        print("Handle object")
         print(key, value)
+        # This is supposed to fix category case
+        name_ = None
+        if value.get("type") is None:
+            name_ = next(iter(value))
+            value = value[name_]
+            print("NEW VALUE: {}".format(value))
+
         if value.get("type") == "object":
-            parameters.append(handle_object(value))
+            if name_ is not None:
+                parameters.append(handle_object(value, name_))
+            else:
+                parameters.append(handle_object(value))
         elif value.get("type") == "array":
-            parameters.append(handle_array(value))
+            if name_ is not None:
+                parameters.append(handle_array(value, name_))
+            else:
+                parameters.append(handle_array(value))
         else:
             parameters.append(model.Parameter(key, "requestBody",
                                               key in required_parameters, value.get("type"), None, value.get("enum")))
-    # TODO We need the objects name in order to create proper requests!
+
     obj_parameter = model.Parameter(name, "requestBody", val.get("required"), val.get("type"), parameters)
-    print("###############################")
-    obj_parameter.print_info()
-    print("################################")
+    #print("###############################")
+    #obj_parameter.print_info()
+    #print("################################")
     return obj_parameter
 
 
@@ -71,22 +93,28 @@ def handle_array(val, name=None):
     :return:
     '''
     parameters = []
-    # TODO check if array can ever have a required field
     required_parameters = val.get("required")
 
     for key, value in val.get("items").items():
-        print("!!!!!!!!!!!!!!!!!!")
-        print(val.get("items"))
-        print("!!!!!!!!!!!!!!!!!!!!")
+        # IF the array only contains  a parameter with no name(For example {type: string}) value.get fails.
+        try:
+            if value.get("type") == "object":
+                parameters.append(handle_object(value))
+            elif value.get("type") == "array":
+                parameters.append(handle_array(value))
+            else:
+                parameters.append(model.Parameter(key, "requestBody",
+                                                  key in required_parameters, value.get("type"), None, value.get("enum")))
+        except AttributeError:
+            # TODO this can't be the best way to fix above mentioned issue
+            logging.error("Attribute error at handle_array. ")
+            if key == "type":
+                valkey = value
+            else:
+                valkey = None
+            array_parameter = model.Parameter(name, "requestBody", val.get("required"), valkey, parameters)
 
-        if value.get("type") == "object":
-            parameters.append(handle_object(value))
-        elif value.get("type") == "array":
-            parameters.append(handle_array(value))
-        else:
-            parameters.append(model.Parameter(key, "requestBody",
-                                              key in required_parameters, value.get("type"), None, value.get("enum")))
-
+            return array_parameter
     array_parameter = model.Parameter(name, "requestBody", val.get("required"), val.get("type"), parameters)
 
     return array_parameter
@@ -101,7 +129,7 @@ def create_request_body(rb):
         name = next(iter(rb))
         rb = rb[name]
     logging.debug("Creating requestbody")
-    logging.debug("rb is : {}".format(rb))
+    #logging.debug("rb is : {}".format(rb))
 
     required = rb.get("required")
     # loop the content. Create new requestbody object for each parameter
@@ -116,7 +144,7 @@ def create_request_body(rb):
             schema = schema[s_name]
 
         # ###### REQUESTBODY SCHEMA PARSING ###################
-        logging.debug("\nSchema {}".format(schema))
+        #logging.debug("\nSchema {}".format(schema))
         if schema.get("type") == "object":
             new_parameter = handle_object(schema, s_name)
         elif schema.get("type") == "array":
@@ -136,6 +164,9 @@ def create_request_body(rb):
 
 # Parses openap3 spec and returns api object defined in model
 def openapi3(json, args):
+
+    # Creating logger
+    logging.getLogger("Parser")
 
     # Parsing of openapi 3.x.x
     logging.info("Api version " + json.get("openapi"))
@@ -230,23 +261,55 @@ def openapi3(json, args):
                     par_name = parameter["name"]
                     par_location = parameter["in"]
                     par_required = parameter["required"]
-                    # TODO parse through schema and style and fetch relevant component?
+                    par_value = None
                     if "schema" in parameter:
-                        # TODO Currently does not take the format field from schema.
+                        logging.info("Schema in parameter {}".format(parameter))
                         if parameter["schema"].get("type"):
                             par_format = parameter["schema"].get("type")
-                            # if parameter is an array add another parameter object inside it with correct format
-                            if par_format is "array":
+                            logging.info("Parameter format: {}".format(par_format))
+                            # TODO remove commented code after parser works
+                            # This part assumes that there is only one parameter within the array.
+                            # It creates a new parameter object within the array parameter.
+                            if par_format == "array":
+                                # Set values to None
+                                par_name_ = None
+                                par_options_ = None
+                                par_location_ = None
+                                par_required_ = None
+                                par_format_ = None
+                                par_value_ = None
+                                # Parse all of the fields looking for variables above
+                                for item, value in parameter["schema"]["items"].items():
+                                    if item == "name":
+                                        par_name_ = value
+                                    elif item == "enum":
+                                        par_options_ = value
+                                    elif item == "required":
+                                        par_required_ = value
+                                    elif item == "type":
+                                        par_format_ = value
+                                    elif item == "default":
+                                        par_value_ = value
+                                par_value = model.Parameter(par_name_, par_location_, par_required_, par_format_
+                                                            , par_value_, par_options_)
+
+                                '''
+                                This is old code that did not work. Saved because I might have to use it later
+                                
                                 par_value = []
                                 for item in parameter["schema"]["items"]:
+                                    logging.info("Parsing array parameter {}".format(item))
                                     par_name_ = None
                                     par_options_ = None
                                     par_location_ = None
                                     par_required = None
+
                                     if item["name"]:
+                                        logging.info("GREP1")
                                         par_name_ = item["name"]
 
                                     if "enum" in item:
+                                        logging.info("GREP")
                                         par_options_ = item["enum"]
 
                                     if item["required"]:
@@ -259,6 +322,7 @@ def openapi3(json, args):
                                 # Add array parameter containing other parameters to method
                                 new_method.add_parameter(model.Parameter(par_name, par_location,
                                                                          par_required, par_format, par_value))
+                                '''
                         else:
                             par_format = parameter["schema"]
 
@@ -267,7 +331,8 @@ def openapi3(json, args):
                     else:
                         logging.error("No parameter schema or style detected")
                         par_format = None
-                    new_parameter = model.Parameter(par_name, par_location, par_required, par_format)
+
+                    new_parameter = model.Parameter(par_name, par_location, par_required, par_format, par_value)
 
                     allowed = True
                     for par in new_method.parameters:
