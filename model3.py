@@ -81,6 +81,7 @@ class RequestBody:
         for p in self.params:
             p.print_info()
     # TODO Check how arrays are formed
+
     def json(self):
         # returns a json version of the requestBody
         if self.type_ != "application/json":
@@ -115,6 +116,7 @@ class RequestBody:
     def object_json(self, param):
         return_dict = {}
         for p in param.value:
+            #logging.info(p)
             if p.format_ == "object":
                 return_dict = {**return_dict ,**self.object_json(p)}
             elif p.format_ == "array":

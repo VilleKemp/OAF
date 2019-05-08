@@ -323,3 +323,50 @@ class Req:
 
         return r.status_code, r
 
+    def use_good_values(self, good_values):
+        '''
+        Changes parameter values to same ones that can be found from good_values
+        This method might be too "dumb" and need work later
+        :param good_values:
+        :return:
+        '''
+
+        logging.debug("Self.parameters: {} \r good_values: {}".format(len(self.parameters), len(good_values)))
+        #Parameters.
+        for p in self.parameters:
+            for good in good_values:
+                if p.name == good.name:
+                    logging.debug("Replaced {} {} with {} {}".format(p.name, p.value, good.name, good.value))
+                    p.value = good.value
+                elif p.format_ != "object" and good.format_ == "object":
+                    self.good_object(p, good)
+
+        # Requestbody
+        for rbody in self.content:
+            if rbody.params is not None:
+                for p in rbody.params:
+                    for good in good_values:
+                        logging.debug("Replaced {} {} with {} {}".format(p.name, p.value, good.name, good.value))
+                        if p.name == good.name:
+                            p.value = good.value
+                        elif p.format_ != "object" and good.format_ == "object":
+                            self.good_object(p, good)
+        return
+
+    def good_object(self, p, g):
+        for par in g.value:
+            if par.name == p.name:
+                logging.debug("Replaced {} {} with {} {}".format(p.name, p.value, par.name, par.value))
+                p.value = par.value
+            elif par.format_ != "object" and p.format_ == "object":
+                self.good_object(par, g)
+
+    def return_parnames(self):
+        ret = []
+        for par in self.parameters:
+            ret.append(par.name)
+
+        for rbody in self.content:
+            for par in rbody.params:
+                ret.append(par.name)
+        return ret
