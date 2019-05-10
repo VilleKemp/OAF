@@ -10,8 +10,11 @@ import model3 as model
 import req as req_model
 import parsers
 ##GLOBALS##
-ATTEMPTS = 20
-
+# Move these to config at some point
+ATTEMPTS = 30
+UNTIL_GIVE_UP = 15
+ACCEPTED_CODES = [200]
+DUPLICATES_COUNT = 3
 # TODo 4.4
 '''
 Ainakin tag kenttä luodaan väärin. Tag nimen sijaan luodaan objekti null: ...
@@ -53,25 +56,56 @@ def initialize_logger(output_dir):
     logger.addHandler(handler)
 
 
-def ramdasa(amount, testcase_folder, seed_folder):
-    
+def radamsa(config):
+    '''
+    Checks if there are fuzz cases. If not generates user specified amount of them and then return one
+    :param testcase_folder:
+    :param seed_folder:
+    :param amount:
+    :return:
+    '''
+
+    testcase_folder = config["testcase_folder"]
+    seed_folder = config["seed_folder"]
+    amount = config["radamsa_output_amount"]
+    temp_folder = config["temp_folder"]
+
     case_name = 'fuzzcase'
-    output = testcase_folder+'/'+case_name+'-%n'
+    output = testcase_folder+'/'+case_name+'-%n.txt'
     
     # Go to testcase_folder, check if files exist, generate files if needed from files in folder seed
-    query = ['ls', testcase_folder, '|', 'grep', '-q', case_name, '|', '|', 'radamsa', '-n', output, seed_folder + '/*']
-    print(subprocess.check_output(query))
+    # TODo after demo remove shell=True! This is a security issue.
+    #query = ['ls', testcase_folder, '|', 'grep', '-q', case_name, '|', '|', 'radamsa', '-o', output, '-n', str(amount), seed_folder + '/*']
+    query = 'ls ' + testcase_folder + ' | ' + 'grep ' + '-q ' + case_name + ' || ' + 'radamsa ' + '-o ' + output + ' -n ' +  str(amount) +" " +  seed_folder + '/*'
+    logging.info("Query is : {}".format(query))
+    logging.info(subprocess.check_output(query, shell=True))
     
     # Take one of the fuzzcases, use it and then remove it from the pool of files that the above script checks
-    # TODO Exact way this is used is not yet decided
-    file_under_use='placeholder.txt'
-    print(subprocess.check_output(['mv','"$(ls',testcase_folder, '|', 'head','-n 1)"', file_under_use]))
+
+    file_under_use = temp_folder + "/inuse.txt"
+    query = 'ls ' +testcase_folder + ' | ' + 'head '+ '-n ' + '1'
+    logging.info("Query2 is : {}".format(query))
+    logging.debug(subprocess.check_output(query, shell=True))
+    filename = subprocess.check_output(query, shell=True)
+    filename = filename.decode()
+    filename = filename.strip("\n")
+    query = 'mv ' +testcase_folder+"/"+ str(filename)+ " " + file_under_use
+    logging.info("Query3: {}".format(query))
+    logging.info(subprocess.check_output(query, shell=True))
+
+
+    #logging.info(subprocess.check_output(['mv','"' + testcase_folder + '/$(ls ' + testcase_folder + ' | ' + 'head' + ' -n 1)"', file_under_use], shell=True))
+    logging.info("Reading {}".format(file_under_use))
+    with open(file_under_use,'r', errors = 'ignore') as f:
+        fuzz_param = f.read()
+    logging.debug("Fuzz parameter is : {}".format(fuzz_param))
+    return fuzz_param
 
 
 def create_folders(folders):
     # Create all the folders that the program needs for working
     for folder in folders:
-        print(subprocess.check_output(['mkdir', '-p', folder]))
+        logging.info(subprocess.check_output(['mkdir', '-p', folder]))
 
 
 def readfile(api):
@@ -148,27 +182,133 @@ def request_generator(api, args):
     
     
     '''
-    # TODO tässä on aivopieru
-    while len(legit_requests) != api.amount():
+
+    counter = 0
+    # debug variable that contains all the codes that create_request encounters
+    codes = []
+    while len(legit_requests) != api.amount() and counter < UNTIL_GIVE_UP:
         # Go over each path
+        counter = counter + 1
         for path in api.paths:
         # Give path to create_request
-            result = create_request(path, args, good_values)
+
+            result, codes = create_request(path, args, good_values, codes)
             # If creation was successful add to legit_requests
             if result is not False:
                 legit_requests.append(result)
                 logging.debug("Good request received. There are {} good requests out of {} total".format(len(legit_requests), api.amount()))
                 # Save all values that went through.
+                logging.debug("URL: {}{}".format(result.url.base, result.url.endpoint))
+                for par in result.return_pars():
+                    logging.debug("Adding par: {} {}\n    {}".format(par.name, par.format_, par.value))
+                    good_values.append(par)
+                '''
                 for p in result.parameters:
+                    good_values.append(p)
+                for i in result.content:
+                    for x in i.params:
+                        good_values.append(x)
+                '''
 
-                    good_values.append(p.value)
+    ########## Debugging block #############
 
-        #legit_requests.append(create_request(path))
     logging.info("Generated {} legit requests".format(len(legit_requests)))
-    logging.error("END OF CODE. Lazy bastard code more")
+    if len(legit_requests) != api.amount():
+        logging.error("Generated {}/{} requests".format(len(legit_requests), api.amount()))
+    logging.info("Following codes happened: {}".format(codes))
+    logging.debug("There were {} legit parameters".format(len(good_values)))
+    for par in good_values:
+        logging.debug("{} {}".format(par.name, par.format_))
+        logging.debug(par.value)
+        logging.debug(par)
+    logging.info("Legit requests were")
+    for r in legit_requests:
+        logging.debug("     {}{}".format(r.url.base, r.url.endpoint))
+        logging.debug(r.method)
+        logging.debug("Parameters:")
+        for p in r.parameters:
+            logging.debug("     {} {}".format(p.name, p.format_))
+            logging.debug("     {}".format(p.value))
+        logging.debug("RequestBody")
+        for p in r.content:
+            for para in p.params:
+                logging.info("  {}".format(para.name))
+                if para.format_ != "object":
+                    logging.info("  {}".format(para.value))
+                else:
+                    for ipar in para.value:
+                        logging.info("      {}".format(ipar.name))
+                        logging.info("      {}".format(ipar.value))
+
+    ##############################################
+    # This currently does nothing. Implement chain creation later
+    chains = []
+    chains = create_chains(legit_requests)
 
 
-def create_request(path, args, good_values=None):
+    return legit_requests
+
+def fuzz(reqs, config, args):
+    '''
+    Fuzzing module.
+    Initially will fuzz all of the variables. After that works more logic should be added
+    :param reqs:
+    :return:
+    '''
+    logging.debug("Inputting: {} {} {} {}".format(config["testcase_folder"], config["seed_folder"], config["radamsa_output_amount"], config["temp_folder"]))
+    logging.debug("Fuzzing!")
+    loopi=0
+
+    while True:
+        for r in reqs:
+            loopi = loopi + 1
+            logging.debug("Fuzzing loop {}".format(loopi))
+            logging.info("{}{} {}".format(r.url.base,r.url.endpoint, r.method))
+            for p in r.parameters:
+                # Dumb way. Just for the demo
+                logging.info("p_-:{}".format(p))
+                p.value = radamsa(config)
+            for o in r.content:
+                for pa in o.params:
+                    logging.info("pa:{}".format(pa))
+                    if pa.format_ != "object" and pa.format_ != "array":
+                        pa.value = radamsa(config)
+                    elif pa.format_ == "object":
+                        placeholder_obj(pa.value, config)
+                    elif pa.format_ == "array":
+                        placeholder_array(pa.value, config)
+
+            r.send(args)
+
+
+def placeholder_obj(params, config):
+    for pa in params:
+        if pa.format_ != "object" and pa.format_ != "array":
+            pa.value = radamsa(config)
+        elif pa.format_ == "object":
+            placeholder_obj(pa.value, config)
+        elif pa.format_ == "array":
+            placeholder_array(pa.value, config)
+
+
+def placeholder_array(params, config):
+    for pa in params:
+        if pa.format_ != "object" and pa.format_ != "array":
+            pa.value = radamsa(config)
+        elif pa.format_ == "object":
+            placeholder_obj(pa.value, config)
+        elif pa.format_ == "array":
+            placeholder_array(pa.value, config)
+
+def create_chains(reqs):
+    '''
+
+    :param reqs:
+    :return:
+    '''
+    return reqs
+
+def create_request(path, args, good_values=None, codes=[]):
     '''
     # Creates a functional request
     Constructs a req object
@@ -185,7 +325,6 @@ def create_request(path, args, good_values=None):
             parameters = m.parameters
         # TODO Remove this if not used
             header = None
-        # TODO content
             content = m.requestBody
             logging.info("Methods requestBody is {}".format(content))
             for r in content:
@@ -193,26 +332,142 @@ def create_request(path, args, good_values=None):
 
             security = m.security
             requ = req_model.Req(url, parameters, method, header, content, security)
+
+
+            # Below is a long and messy way to do the following
+            '''
+            We want to utilize values that has been part of an acceptable request
+            In order to do that we save all the variables that were part of acceptable requests
+            We remove ones that the current endpoint doesn't want
+            Then we generate unique sets of these requests that do not contain any duplicates 
+            This leads to a problem when there are too many duplicate variables in the same request
+            The amount of sets grows to ridiciluous amounts.
+            Due to this reason all duplicates above <DUPLICATE_COUNT> are removed
+            '''
+
+            # Get duplicates
+            duplicates2 = []
+            for r in good_values:
+                duplicates2.append(r.name)
+            logging.debug("Duplicates0 {}".format(duplicates2))
+            duplicates = dict.fromkeys(duplicates2)
+            # logging.debug("Duplicates: {}".format(duplicates))
+            for d in duplicates2:
+                if duplicates[d] is None:
+                    duplicates[d] = 1
+                else:
+                    duplicates[d] = duplicates[d]+1
+            logging.debug("Duplicates: {}".format(duplicates))
+
+
+
+
+            # prune good values
+            req_pars = []
+            for par in requ.return_pars():
+                req_pars.append(par.name)
+            logging.debug("return_pars() {}".format(req_pars))
+            duplicates2 = {}
+            for key, val in duplicates.items():
+                if key in req_pars:
+                    duplicates2[key] = val
+            duplicates = duplicates2
+            logging.debug("Pruned: {}".format(duplicates))
+
+            #
+            logging.info("Good_values size: {}".format(len(good_values)))
+            pruned_good_values = []
+            for key, val in duplicates.items():
+                for par in good_values:
+                    if par.name == key:
+                        pruned_good_values.append(par)
+            logging.info("After pruning: {}".format(len(pruned_good_values)))
+
+            small_good_values = []
+            try:
+                small_good_values.append(good_values[0])
+            except IndexError:
+                small_good_values = []
+            logging.info("Removing values so that there are no more than {} duplicates".format(DUPLICATES_COUNT))
+            counts = {}
+            for par1 in pruned_good_values:
+                try:
+                    counts[par1.name] += 1
+                except KeyError:
+                    counts[par1.name] = 1
+
+                if counts[par1.name] < DUPLICATES_COUNT:
+                    small_good_values.append(par1)
+
+
+            logging.info("After removal {}".format(len(small_good_values)))
+            #logging.info(counts)
+
+
+
+            good_sets = [[]]
+            #logging.debug(good_sets)
+            logging.info("Generating good sets.")
+            logging.info("Endpoint contains following parameters contained in good values")
+            #logging.info(duplicates)
+            #logging.info(good_values)
+            for key, val in duplicates.items():
+                for par in small_good_values:
+                    if par.name == key:
+                        for set in good_sets:
+                            has_flag = False
+                            if len(set) < 1:
+                                set.append(par)
+                            else:
+                                for set_par in set:
+                                    # format check should always give != None when comparing parameter objects
+                                    if set_par.name == key and set_par.format_ is not None:
+                                        new_set = set
+                                        new_set.remove(set_par)
+                                        good_sets.append(new_set)
+                                        has_flag = True
+                            if has_flag is False:
+                                set.append(par)
+
+
+
+            logging.info("Generated {} sets".format(len(good_sets)))
+
+            # Randomize values
             requ.set_dummy_values()
-            looping = True
+
+            '''
+            Loop tries to send a request <ATTEMPTS> times. 
+            First try is always done with random values.
+            Following tries use previously generated good_sets until they are exhausted.
+            After that random values are used.  
+            '''
             for i in range(ATTEMPTS):
+
                 logging.debug("Sending to {}".format(path.path))
                 code, r = requ.send(args)
                 logging.debug("Received code {}".format(code))
                 logging.debug("Message: {}".format(r.text))
-                # Currently taking 200 and 401 as legit. 401 means authorization error, usually due to not oaut implementation
-                if code == 200:
+                if code not in codes:
+                    codes.append(code)
+
+                if code in ACCEPTED_CODES:
                     m.has_request = True
                     logging.debug("Good request created {}{}{} {}".format(requ.url.base,
                                                                           requ.url.endpoint, requ.url.parameter,
                                                                           requ.method))
 
-                    return requ
+                    return requ, codes
                 else:
+                    try:
+                        requ.use_good_values(good_sets.pop())
+                    except IndexError:
+                        requ.set_dummy_values()
 
-                    requ.set_dummy_values()
 
-        return False
+
+
+        return False, codes
 
 
 def ref_parser(datadict, full_dict):
@@ -269,7 +524,9 @@ def main():
     # Idea at this point is to mark parts of the requests that are going to be fuzzed with some type of identifiers. With this variable user can set it themselves.
     "fuzz_variable_identifier": "$",
     # folder containing specs
-    "target_folder": "targets"
+    "target_folder": "targets",
+    # Current radamsa iteration uses temp folder to store the currently used seed file.
+    "temp_folder": "used_cases"
     }
     
     ################
@@ -292,13 +549,18 @@ def main():
         json.dump(api, outfile)
 
     if str(api.get("openapi")).startswith("3."):
-        api = parsers.openapi3(api,args)
+        api = parsers.openapi3(api, args)
     elif str(api.get("openapi")).startswith("2."):
         parsers.openapi2(api)
     else:
         logging.error("Openapi version isn't 2 or 3. Version: "+api.get("openapi"))
 
-    request_generator(api, args)
+    requests = request_generator(api, args)
+    try:
+        fuzz(requests, config, args)
+    except Exception as e:
+        logging.info("Fuzzer crashed")
+        logging.info(repr(e))
 
 
 if __name__ == "__main__":

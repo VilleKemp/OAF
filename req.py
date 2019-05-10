@@ -330,8 +330,15 @@ class Req:
         :param good_values:
         :return:
         '''
+        logging.debug("Using use_good_values")
+        logging.debug("Self.parameters: {}\n".format(len(self.parameters)))
+        for par in self.parameters:
+            logging.debug(par.name)
+        logging.debug("Good values: {}".format(len(good_values)))
+        for par in good_values:
+            logging.debug(par.name)
+           # logging.debug(par.value)
 
-        logging.debug("Self.parameters: {} \r good_values: {}".format(len(self.parameters), len(good_values)))
         #Parameters.
         for p in self.parameters:
             for good in good_values:
@@ -361,12 +368,56 @@ class Req:
             elif par.format_ != "object" and p.format_ == "object":
                 self.good_object(par, g)
 
-    def return_parnames(self):
+    def return_from_nested(self, parameter, name_list):
+        logging.debug("Req/return_pars/nested: {} added".format(parameter.name))
+        name_list.append(parameter)
+        try:
+            if parameter.format_ in self.arrays or parameter.format_ in self.objects:
+                # If parameter is array or obj it has other parameters within
+                # Except obj can contain a single array or obj value
+                for par in parameter.value:
+                    if par.format_ in self.objects or par.format_ in self.arrays:
+                        name_list = self.return_from_nested(par, name_list)
+                    else:
+                        logging.debug("Req/return_pars/nested: {} added".format(par.name))
+                        name_list.append(par)
+
+        except TypeError:
+            # Invoked when obj contains a single array
+            if parameter.format_ in self.objects or parameter.format_ in self.arrays:
+
+                name_list = self.return_from_nested(parameter.value, name_list)
+
+        except AttributeError:
+            # Invoked in cases when obj or array contain a single string.
+            # In case of petshop triggering this might be a bug
+            return name_list
+
+
+        return name_list
+
+    def return_pars(self):
+        '''
+        Returns parameter names of all parameters within self.parameters and self.content
+        Iterates through both and appends their names.
+        If parameter is either object or array uses return_from_nested to get the inner variables
+        '''
+        logging.debug("Req {}{}".format(self.url.base, self.url.endpoint))
         ret = []
         for par in self.parameters:
-            ret.append(par.name)
+
+            if par.format_ in self.objects or par.format_ in self.arrays:
+                ret = self.return_from_nested(par, ret)
+            else:
+                logging.debug("Req/return_pars: {} added".format(par.name))
+                ret.append(par)
 
         for rbody in self.content:
             for par in rbody.params:
-                ret.append(par.name)
+                if par.format_ in self.objects or par.format_ in self.arrays:
+                    ret = self.return_from_nested(par, ret)
+                else:
+                    logging.debug("Req/return_pars: {} added".format(par.name))
+                    ret.append(par)
         return ret
+
