@@ -20,6 +20,7 @@ import requests
 import re
 import sys
 import model3 as model
+import datetime
 
 class Url:
     def __init__(self, base, endpoint, parameter=''):
@@ -39,6 +40,8 @@ class Req:
     booleans = ["bool", "boolean", "Boolean"]
     rand_range = [0, 100]
     rand_string_length = 10
+    # location for the dummy value
+    DUMMY_FILE = 'seed/dummy'
 
     def __init__(self, url, parameters, method, header=None, content=None, security=None):
         self.url = url
@@ -59,11 +62,15 @@ class Req:
         self.sec_query = {}
         self.sec_header = {}
         self.sec_cookie = {}
+        # Contains uploaded files
+        self.files = {}
         #self.requestBody = None
 
     def handle_object(self, param):
 
         for par in param.value:
+            self.change_pars(par)
+            '''
             if par.format_ in self.integers and par.options is None:
                 logging.debug("     Parameter used to be {} with value {}".format(par.format_, par.value))
                 par.value = random.randint(self.rand_range[0], self.rand_range[1])
@@ -97,31 +104,33 @@ class Req:
                 logging.debug("Par options was not None and it wasn't an array")
                 par.value = random.choice(par.options)
             else:
-                logging.error("Setting dummy values failed. Setting value to 42")
+                logging.error("Setting dummy values failed. Parameter was {} \r\nSetting value to 42".format(par.name))
                 par.value = 42
+            '''
         return
 
     def set_dummy_values(self):
         for par in self.parameters:
+            self.change_pars(par)
             '''
             If par.value is None generates either a random int or string
             
-            '''
-            # TODO Can't generate these randomly. Need to use same "corpus" for all requests!
-            #  Otherwise certain gets won't work
+            
             logging.debug("Url is {}.".format(self.url.base[0] + self.url.endpoint))
             logging.debug("     Parameter: {}".format(par.name))
 
-            #elif isinstance(par.value, int) and par.options is None:
+            # Integers
             if par.format_ in self.integers and par.options is None:
                 logging.debug("     Parameter used to be {} with value {}".format(par.format_, par.value))
                 par.value = random.randint(self.rand_range[0], self.rand_range[1])
                 logging.debug("     Value was changed to {}".format(par.value))
+            # Strings
             elif par.format_ in self.strings and par.options is None:
             #elif isinstance(par.value, str) and par.options is None:
                 logging.debug("     Parameter used to be {} with value {}".format(par.format_, par.value))
                 par.value = ''.join(random.choices(string.ascii_uppercase + string.digits, k=self.rand_string_length))
                 logging.debug("     Value was changed to {}".format(par.value))
+            # Arrays
             elif par.format_ in self.arrays:
                 # Going with the assumption that there are no other parameter within the array
                 # Parameter is in Parameter object form
@@ -139,23 +148,29 @@ class Req:
                             random.choices(string.ascii_uppercase + string.digits, k=self.rand_string_length))
                     elif innerpar.format_ in self.integers:
                         par.value = random.randint(self.rand_range[0], self.rand_range[1])
+            # Objects
             elif par.format_ in self.objects:
                 logging.debug("Parameter is an object")
                 self.handle_object(par)
+            # Parameter that can only have specific options
             elif par.options is not None:
                 logging.debug("Par options was not None and it wasn't an array")
                 par.value = random.choice(par.options)
+            # Booleans
             elif par.format_ in self.booleans:
                 par.value = random.choice([True, False])
+            # Everything else
             else:
-                logging.error("Setting dummy values failed.{} {} Setting value to 42".format(par.name, par.format_))
+                logging.error("Setting dummy values failed. Parameter was {} \r\nSetting value to 42".format(par.name))
                 par.value = 42
+            '''
 
-            # Todo do the same for requestBody
             logging.info("RequestBody: {} ".format(self.content))
         for o in self.content:
             logging.info("Processing requestbody {} {}".format(o, o.type_))
             for par in o.params:
+                self.change_pars(par)
+                '''
                 logging.info("Processing parameter {}".format(par.name))
                 if par.format_ in self.integers and par.options is None:
                     logging.debug("     Parameter used to be {} with value {}".format(par.format_, par.value))
@@ -193,9 +208,64 @@ class Req:
                     logging.debug("Par options was not None and it wasn't an array")
                     par.value = random.choice(par.options)
                 else:
-                    logging.error("Setting dummy values failed. Setting value to 42")
+                    logging.error(
+                        "Setting dummy values failed. Parameter was {} \r\nSetting value to 42".format(par.name))
                     par.value = 42
+                    '''
 
+# TODO Refactoring. Remove above comments when everything works
+    def change_pars(self, par):
+        try:
+            logging.info("Processing parameter {}".format(par.name))
+            if par.format_ in self.integers and par.options is None:
+                logging.debug("     Parameter used to be {} with value {}".format(par.format_, par.value))
+                # TODO utilize format_detailed
+                par.value = random.randint(self.rand_range[0], self.rand_range[1])
+                logging.debug("     Value was changed to {}".format(par.value))
+            elif par.format_ in self.strings and par.options is None:
+                '''
+                Create cases where string must abide to a specific format or similar to here.
+                '''
+                logging.debug("     Parameter used to be {} with value {}".format(par.format_, par.value))
+                if par.format_detailed == "date" or par.format_detailed == "date-time":
+                    # If the parameter should be in date/date-time format we give it current time
+                    par.value = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
+                elif par.format_detailed == "binary":
+                    # Api expects a file
+                    par.value = par.name
+                    if par.name not in self.files:
+                        # Add dummy file to self.files
+                        self.files[par.name] = open(self.DUMMY_FILE, 'rb')
+                else:
+                    # If above ifs don't happen we create a random string
+                    par.value = ''.join(
+                        random.choices(string.ascii_uppercase + string.digits, k=self.rand_string_length))
+                logging.debug("     Value was changed to {}".format(par.value))
+            elif par.format_ in self.arrays:
+                try:
+                    for innerpar in par.value:
+                        self.change_pars(innerpar)
+                except TypeError:
+                    # Happens when there is only one object in array
+                    self.change_pars(par.value)
+            elif par.format_ in self.objects:
+                logging.debug("Parameter is an object")
+                for innerpar in par.value:
+                    self.change_pars(innerpar)
+                #self.handle_object(par)
+            elif par.options is not None:
+                logging.debug("Par options was not None and it wasn't an array")
+                par.value = random.choice(par.options)
+                # Booleans
+            elif par.format_ in self.booleans:
+                par.value = random.choice([True, False])
+            else:
+                logging.error(
+                    "Setting dummy values failed. Parameter was {} \r\nSetting value to 42".format(par.name))
+                par.value = 42
+        except AttributeError:
+            return
+        return
 
 
     def send(self, args):
@@ -238,8 +308,6 @@ class Req:
         logging.info("Security {}".format(self.security))
         if self.security is not None:
             # Apikey security
-            # logging.debug(self.security)
-            # TODO security contains many objects. Find out if it is intentional
             for sec in self.security:
                 # logging.debug(sec.type_)
                 # logging.debug("{} {} {}".format(sec.type_, sec.name, sec.location))
@@ -269,7 +337,7 @@ class Req:
         request_body = None
         if len(self.content) == 1:
             # This might cause unintended situations
-            self.header["Content-Type"] = "application/json"
+            self.header["Content-Type"] = self.content[0].type_#"application/json"
             request_body = self.content[0]
         elif self.content is not None:
             for r in self.content:
@@ -278,44 +346,54 @@ class Req:
                     # This should be technically right.
                     # Alternative ways: Check header and x-* fields for headers
                     # Try without and after 415 (unsupported media type) do this
-                    self.header["Content-Type"] = "application/json"
+                    self.header["Content-Type"] = r.type_
                     break
         if request_body is not None:
             request_body = request_body.json()
 
-
-
-
-
+        # TODO rethink requests creation.
+        # Tämä on vähän purkka. Multipart viestittely ei toimi requests jos itse asettaa header
+        # Olisi hyvä harkita sitä, ettei itse aseta koko header jos tämän saisi niin toimimaan
+        try:
+            if self.header["Content-Type"] == "multipart/form-data":
+                del self.header["Content-Type"]
+        except KeyError:
+            logging.debug("")
         # TODO currently only uses first url
-
+        if self.url.base[0].endswith('/'):
+            self.url.base[0] = self.url.base[0][:-1]
         r_url = ''.join((self.url.base[0], self.url.endpoint))
         # Replace {par} with urlparameter
         if self.url.parameter is not None:
             r_url = re.sub('{.*}', str(self.url.parameter), r_url, flags=re.DOTALL)
 
-        logging.debug("\nSending {} to {}".format(self.method, r_url))
-        logging.debug("Header params: {}\n Cookie params: {}\n Query params: {}\n Path params: {}\n Content: {}".format(
-            {**self.par_header, **self.sec_header, **self.header}, {**self.par_cookie, **self.sec_cookie}, {**self.par_query, **self.sec_query}, self.url.parameter, request_body))
+        if args.cheader:
+            d = {}
+            d[args.cheader[0]] = args.cheader[1]
+            self.header = {**self.header, **d}
+
+        logging.debug("\nSending {} to {} ".format(self.method, r_url))
+        logging.debug("Header params: {}\n Cookie params: {}\n Query params: {}\n Path params: {}\n Content: {}\n Files: {}".format(
+            {**self.par_header, **self.sec_header, **self.header}, {**self.par_cookie, **self.sec_cookie}, {**self.par_query, **self.sec_query}, self.url.parameter, request_body, self.files))
         if self.method == "GET":
             r = requests.get(r_url,
                              headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body)
+                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files)
 
         elif self.method == "POST":
             r = requests.post(r_url,
                              headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body)
+                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files)
 
         elif self.method == "DELETE":
             r = requests.delete(r_url,
                              headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body)
+                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files)
 
         elif self.method == "PUT":
             r = requests.put(r_url,
                              headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body)
+                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files)
 
         else:
             logging.error("Error sending request. Method not found")
@@ -361,6 +439,12 @@ class Req:
         return
 
     def good_object(self, p, g):
+        '''
+        Helper function for use_good_values.
+        :param p:
+        :param g:
+        :return:
+        '''
         for par in g.value:
             if par.name == p.name:
                 logging.debug("Replaced {} {} with {} {}".format(p.name, p.value, par.name, par.value))
@@ -369,12 +453,19 @@ class Req:
                 self.good_object(par, g)
 
     def return_from_nested(self, parameter, name_list):
+        '''
+        Helper function for return_pars. Appends parameters to name_list
+        :param parameter:
+        :param name_list:
+        :return:
+        '''
         logging.debug("Req/return_pars/nested: {} added".format(parameter.name))
         name_list.append(parameter)
         try:
             if parameter.format_ in self.arrays or parameter.format_ in self.objects:
                 # If parameter is array or obj it has other parameters within
                 # Except obj can contain a single array or obj value
+                print(parameter, parameter)
                 for par in parameter.value:
                     if par.format_ in self.objects or par.format_ in self.arrays:
                         name_list = self.return_from_nested(par, name_list)

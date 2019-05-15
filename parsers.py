@@ -56,14 +56,14 @@ def handle_object(val, name=None):
         required_parameters = []
 
     for key, value in val.get("properties").items():
-        print("Handle object")
-        print(key, value)
+        #print("Handle object")
+        #print(key, value)
         # This is supposed to fix category case
         name_ = None
         if value.get("type") is None:
             name_ = next(iter(value))
             value = value[name_]
-            print("NEW VALUE: {}".format(value))
+            #print("NEW VALUE: {}".format(value))
 
         if value.get("type") == "object":
             if name_ is not None:
@@ -77,9 +77,11 @@ def handle_object(val, name=None):
                 parameters.append(handle_array(value))
         else:
             parameters.append(model.Parameter(key, "requestBody",
-                                              key in required_parameters, value.get("type"), None, value.get("enum")))
+                                              key in required_parameters, value.get("type"),
+                                              value.get("format"), None, value.get("enum")))
 
-    obj_parameter = model.Parameter(name, "requestBody", val.get("required"), val.get("type"), parameters)
+    obj_parameter = model.Parameter(name, "requestBody", val.get("required"), val.get("type"),
+                                    val.get("format"), parameters)
     #print("###############################")
     #obj_parameter.print_info()
     #print("################################")
@@ -104,7 +106,8 @@ def handle_array(val, name=None):
                 parameters.append(handle_array(value))
             else:
                 parameters.append(model.Parameter(key, "requestBody",
-                                                  key in required_parameters, value.get("type"), None, value.get("enum")))
+                                                  key in required_parameters, value.get("type"), value.get("format"),
+                                                  None, value.get("enum")))
         except AttributeError:
             # TODO this can't be the best way to fix above mentioned issue
             logging.error("Attribute error at handle_array. ")
@@ -112,10 +115,10 @@ def handle_array(val, name=None):
                 valkey = value
             else:
                 valkey = None
-            array_parameter = model.Parameter(name, "requestBody", val.get("required"), valkey, parameters)
+            array_parameter = model.Parameter(name, "requestBody", val.get("required"), valkey, val.get("format"), parameters)
 
             return array_parameter
-    array_parameter = model.Parameter(name, "requestBody", val.get("required"), val.get("type"), parameters)
+    array_parameter = model.Parameter(name, "requestBody", val.get("required"), val.get("type"), val.get("format"), parameters)
 
     return array_parameter
 
@@ -151,7 +154,7 @@ def create_request_body(rb):
             new_parameter = handle_array(schema, s_name)
         else:
             new_parameter = model.Parameter(schema.get("name"), "requestBody", schema.get("required"), schema.get("type"),
-                                            None, schema.get("enum"))
+                                            schema.get("format"), None, schema.get("enum"))
 
         new_rbody.add_parameter(new_parameter)
 
@@ -260,12 +263,16 @@ def openapi3(json, args):
                     #logging.debug("Parameter found {}".format(parameter))
                     par_name = parameter["name"]
                     par_location = parameter["in"]
-                    par_required = parameter["required"]
+                    try:
+                        par_required = parameter["required"]
+                    except KeyError:
+                        par_required = None
                     par_value = None
                     if "schema" in parameter:
                         logging.info("Schema in parameter {}".format(parameter))
                         if parameter["schema"].get("type"):
                             par_format = parameter["schema"].get("type")
+                            par_format_detailed = parameter["schema"].get("format")
                             logging.info("Parameter format: {}".format(par_format))
                             # TODO remove commented code after parser works
                             # This part assumes that there is only one parameter within the array.
@@ -278,6 +285,8 @@ def openapi3(json, args):
                                 par_required_ = None
                                 par_format_ = None
                                 par_value_ = None
+
+                                par_format_detailed_ = None
                                 # Parse all of the fields looking for variables above
                                 for item, value in parameter["schema"]["items"].items():
                                     if item == "name":
@@ -290,8 +299,10 @@ def openapi3(json, args):
                                         par_format_ = value
                                     elif item == "default":
                                         par_value_ = value
-                                par_value = model.Parameter(par_name_, par_location_, par_required_, par_format_
-                                                            , par_value_, par_options_)
+                                    elif item == "format":
+                                        par_format_detailed_ = value
+                                par_value = model.Parameter(par_name_, par_location_, par_required_,
+                                                            par_format_, par_format_detailed_, par_value_, par_options_)
 
                                 '''
                                 This is old code that did not work. Saved because I might have to use it later
@@ -332,7 +343,8 @@ def openapi3(json, args):
                         logging.error("No parameter schema or style detected")
                         par_format = None
 
-                    new_parameter = model.Parameter(par_name, par_location, par_required, par_format, par_value)
+                    new_parameter = model.Parameter(par_name, par_location, par_required,
+                                                    par_format, par_format_detailed, par_value)
 
                     allowed = True
                     for par in new_method.parameters:

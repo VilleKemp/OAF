@@ -191,17 +191,17 @@ def request_generator(api, args):
         counter = counter + 1
         for path in api.paths:
         # Give path to create_request
-
-            result, codes = create_request(path, args, good_values, codes)
-            # If creation was successful add to legit_requests
-            if result is not False:
-                legit_requests.append(result)
-                logging.debug("Good request received. There are {} good requests out of {} total".format(len(legit_requests), api.amount()))
-                # Save all values that went through.
-                logging.debug("URL: {}{}".format(result.url.base, result.url.endpoint))
-                for par in result.return_pars():
-                    logging.debug("Adding par: {} {}\n    {}".format(par.name, par.format_, par.value))
-                    good_values.append(par)
+            for method, m in path.endpoint().items():
+                result, codes = create_request(path, method, m, args, good_values, codes)
+                # If creation was successful add to legit_requests
+                if result is not False:
+                    legit_requests.append(result)
+                    logging.debug("Good request received. There are {} good requests out of {} total".format(len(legit_requests), api.amount()))
+                    # Save all values that went through.
+                    logging.debug("URL: {}{}".format(result.url.base, result.url.endpoint))
+                    for par in result.return_pars():
+                        logging.debug("Adding par: {} {}\n    {}".format(par.name, par.format_, par.value))
+                        good_values.append(par)
                 '''
                 for p in result.parameters:
                     good_values.append(p)
@@ -225,6 +225,7 @@ def request_generator(api, args):
     for r in legit_requests:
         logging.debug("     {}{}".format(r.url.base, r.url.endpoint))
         logging.debug(r.method)
+        '''
         logging.debug("Parameters:")
         for p in r.parameters:
             logging.debug("     {} {}".format(p.name, p.format_))
@@ -239,7 +240,7 @@ def request_generator(api, args):
                     for ipar in para.value:
                         logging.info("      {}".format(ipar.name))
                         logging.info("      {}".format(ipar.value))
-
+        '''
     ##############################################
     # This currently does nothing. Implement chain creation later
     chains = []
@@ -308,7 +309,7 @@ def create_chains(reqs):
     '''
     return reqs
 
-def create_request(path, args, good_values=None, codes=[]):
+def create_request(path, method, m, args, good_values=None, codes=[]):
     '''
     # Creates a functional request
     Constructs a req object
@@ -317,157 +318,157 @@ def create_request(path, args, good_values=None, codes=[]):
     if response code is 2xx returns the request. Otherwise loops
     '''
 
-    method = path.get_methods()
-    method_obj = path.endpoint()
-    for method, m in method_obj.items():
-        if m.has_request is not True:
-            url = req_model.Url(m.server, path.path)
-            parameters = m.parameters
-        # TODO Remove this if not used
-            header = None
-            content = m.requestBody
-            logging.info("Methods requestBody is {}".format(content))
-            for r in content:
-                logging.info(r.print_info())
-
-            security = m.security
-            requ = req_model.Req(url, parameters, method, header, content, security)
 
 
-            # Below is a long and messy way to do the following
-            '''
-            We want to utilize values that has been part of an acceptable request
-            In order to do that we save all the variables that were part of acceptable requests
-            We remove ones that the current endpoint doesn't want
-            Then we generate unique sets of these requests that do not contain any duplicates 
-            This leads to a problem when there are too many duplicate variables in the same request
-            The amount of sets grows to ridiciluous amounts.
-            Due to this reason all duplicates above <DUPLICATE_COUNT> are removed
-            '''
+    #logging.debug("".format(method))
+    if m.has_request is not True:
+        url = req_model.Url(m.server, path.path)
+        parameters = m.parameters
+    # TODO Remove this if not used
+        header = None
+        content = m.requestBody
+        logging.info("Methods requestBody is {}".format(content))
+        for r in content:
+            logging.info(r.print_info())
 
-            # Get duplicates
-            duplicates2 = []
-            for r in good_values:
-                duplicates2.append(r.name)
-            logging.debug("Duplicates0 {}".format(duplicates2))
-            duplicates = dict.fromkeys(duplicates2)
-            # logging.debug("Duplicates: {}".format(duplicates))
-            for d in duplicates2:
-                if duplicates[d] is None:
-                    duplicates[d] = 1
-                else:
-                    duplicates[d] = duplicates[d]+1
-            logging.debug("Duplicates: {}".format(duplicates))
+        security = m.security
+        requ = req_model.Req(url, parameters, method, header, content, security)
 
 
+        # Below is a long and messy way to do the following
+        '''
+        We want to utilize values that has been part of an acceptable request
+        In order to do that we save all the variables that were part of acceptable requests
+        We remove ones that the current endpoint doesn't want
+        Then we generate unique sets of these requests that do not contain any duplicates 
+        This leads to a problem when there are too many duplicate variables in the same request
+        The amount of sets grows to ridiciluous amounts.
+        Due to this reason all duplicates above <DUPLICATE_COUNT> are removed
+        '''
+
+        # Get duplicates
+        duplicates2 = []
+        for r in good_values:
+            duplicates2.append(r.name)
+        logging.debug("Duplicates0 {}".format(duplicates2))
+        duplicates = dict.fromkeys(duplicates2)
+        # logging.debug("Duplicates: {}".format(duplicates))
+        for d in duplicates2:
+            if duplicates[d] is None:
+                duplicates[d] = 1
+            else:
+                duplicates[d] = duplicates[d]+1
+        logging.debug("Duplicates: {}".format(duplicates))
 
 
-            # prune good values
-            req_pars = []
-            for par in requ.return_pars():
-                req_pars.append(par.name)
-            logging.debug("return_pars() {}".format(req_pars))
-            duplicates2 = {}
-            for key, val in duplicates.items():
-                if key in req_pars:
-                    duplicates2[key] = val
-            duplicates = duplicates2
-            logging.debug("Pruned: {}".format(duplicates))
 
-            #
-            logging.info("Good_values size: {}".format(len(good_values)))
-            pruned_good_values = []
-            for key, val in duplicates.items():
-                for par in good_values:
-                    if par.name == key:
-                        pruned_good_values.append(par)
-            logging.info("After pruning: {}".format(len(pruned_good_values)))
 
+        # prune good values
+        req_pars = []
+        for par in requ.return_pars():
+            req_pars.append(par.name)
+        logging.debug("return_pars() {}".format(req_pars))
+        duplicates2 = {}
+        for key, val in duplicates.items():
+            if key in req_pars:
+                duplicates2[key] = val
+        duplicates = duplicates2
+        logging.debug("Pruned: {}".format(duplicates))
+
+        #
+        logging.info("Good_values size: {}".format(len(good_values)))
+        pruned_good_values = []
+        for key, val in duplicates.items():
+            for par in good_values:
+                if par.name == key:
+                    pruned_good_values.append(par)
+        logging.info("After pruning: {}".format(len(pruned_good_values)))
+
+        small_good_values = []
+        try:
+            small_good_values.append(good_values[0])
+        except IndexError:
             small_good_values = []
+        logging.info("Removing values so that there are no more than {} duplicates".format(DUPLICATES_COUNT))
+        counts = {}
+        for par1 in pruned_good_values:
             try:
-                small_good_values.append(good_values[0])
-            except IndexError:
-                small_good_values = []
-            logging.info("Removing values so that there are no more than {} duplicates".format(DUPLICATES_COUNT))
-            counts = {}
-            for par1 in pruned_good_values:
+                counts[par1.name] += 1
+            except KeyError:
+                counts[par1.name] = 1
+
+            if counts[par1.name] < DUPLICATES_COUNT:
+                small_good_values.append(par1)
+
+
+        logging.info("After removal {}".format(len(small_good_values)))
+        #logging.info(counts)
+
+
+
+        good_sets = [[]]
+        #logging.debug(good_sets)
+        logging.info("Generating good sets.")
+        logging.info("Endpoint contains following parameters contained in good values")
+        #logging.info(duplicates)
+        #logging.info(good_values)
+        for key, val in duplicates.items():
+            for par in small_good_values:
+                if par.name == key:
+                    for set in good_sets:
+                        has_flag = False
+                        if len(set) < 1:
+                            set.append(par)
+                        else:
+                            for set_par in set:
+                                # format check should always give != None when comparing parameter objects
+                                if set_par.name == key and set_par.format_ is not None:
+                                    new_set = set
+                                    new_set.remove(set_par)
+                                    good_sets.append(new_set)
+                                    has_flag = True
+                        if has_flag is False:
+                            set.append(par)
+
+
+
+        logging.info("Generated {} sets".format(len(good_sets)))
+
+        # Randomize values
+        requ.set_dummy_values()
+
+        '''
+        Loop tries to send a request <ATTEMPTS> times. 
+        First try is always done with random values.
+        Following tries use previously generated good_sets until they are exhausted.
+        After that random values are used.  
+        '''
+        for i in range(ATTEMPTS):
+
+            logging.debug("Sending to {}".format(path.path))
+            code, r = requ.send(args)
+            logging.debug("Received code {}".format(code))
+            logging.debug("Message: {}".format(r.text))
+            if code not in codes:
+                codes.append(code)
+
+            if code in ACCEPTED_CODES:
+                m.has_request = True
+                logging.debug("Good request created {}{}{} {}".format(requ.url.base,
+                                                                      requ.url.endpoint, requ.url.parameter,
+                                                                      requ.method))
+
+                return requ, codes
+            else:
                 try:
-                    counts[par1.name] += 1
-                except KeyError:
-                    counts[par1.name] = 1
-
-                if counts[par1.name] < DUPLICATES_COUNT:
-                    small_good_values.append(par1)
-
-
-            logging.info("After removal {}".format(len(small_good_values)))
-            #logging.info(counts)
-
-
-
-            good_sets = [[]]
-            #logging.debug(good_sets)
-            logging.info("Generating good sets.")
-            logging.info("Endpoint contains following parameters contained in good values")
-            #logging.info(duplicates)
-            #logging.info(good_values)
-            for key, val in duplicates.items():
-                for par in small_good_values:
-                    if par.name == key:
-                        for set in good_sets:
-                            has_flag = False
-                            if len(set) < 1:
-                                set.append(par)
-                            else:
-                                for set_par in set:
-                                    # format check should always give != None when comparing parameter objects
-                                    if set_par.name == key and set_par.format_ is not None:
-                                        new_set = set
-                                        new_set.remove(set_par)
-                                        good_sets.append(new_set)
-                                        has_flag = True
-                            if has_flag is False:
-                                set.append(par)
-
-
-
-            logging.info("Generated {} sets".format(len(good_sets)))
-
-            # Randomize values
-            requ.set_dummy_values()
-
-            '''
-            Loop tries to send a request <ATTEMPTS> times. 
-            First try is always done with random values.
-            Following tries use previously generated good_sets until they are exhausted.
-            After that random values are used.  
-            '''
-            for i in range(ATTEMPTS):
-
-                logging.debug("Sending to {}".format(path.path))
-                code, r = requ.send(args)
-                logging.debug("Received code {}".format(code))
-                logging.debug("Message: {}".format(r.text))
-                if code not in codes:
-                    codes.append(code)
-
-                if code in ACCEPTED_CODES:
-                    m.has_request = True
-                    logging.debug("Good request created {}{}{} {}".format(requ.url.base,
-                                                                          requ.url.endpoint, requ.url.parameter,
-                                                                          requ.method))
-
-                    return requ, codes
-                else:
-                    try:
-                        requ.use_good_values(good_sets.pop())
-                    except IndexError:
-                        requ.set_dummy_values()
+                    requ.use_good_values(good_sets.pop())
+                except IndexError:
+                    requ.set_dummy_values()
 
 
 
 
-        return False, codes
+    return False, codes
 
 
 def ref_parser(datadict, full_dict):
@@ -507,6 +508,8 @@ def main():
                         help='Parameter given to this argument will replace specs server variable')
     parser.add_argument('-skip', dest='skip',
                         help='Skips specified endpoints. Give endpoints in format ep1,ep2,epx')
+    parser.add_argument('-custom_headers', dest='cheader', nargs=2,
+                        help='Give a custom header that is used in every request. Give it in format -custom_headers name value')
     args = parser.parse_args()
 
     # Config
@@ -530,6 +533,12 @@ def main():
     }
     
     ################
+
+
+
+
+
+
     # If configs dictionary has a variable containing string _folder then create a folder with that name
     create_folders([value for key, value in config.items() if '_folder' in key.lower()])
     
@@ -544,9 +553,10 @@ def main():
     # TODO fix
     api = ref_parser(api, api)
     api = ref_parser(api, api)
+
     # Writes the modified json as modified.json.
-    with open('modified.json', 'w') as outfile:
-        json.dump(api, outfile)
+    #with open('modified.json', 'w') as outfile:
+    #    json.dump(api, outfile)
 
     if str(api.get("openapi")).startswith("3."):
         api = parsers.openapi3(api, args)

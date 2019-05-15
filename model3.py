@@ -92,7 +92,7 @@ class RequestBody:
             for p in self.params:
                 if p.format_ == "object":
                     # In cases of object combine current dict with the object_json functions return dict
-                    rdict = {**rdict ,**self.object_json(p)}
+                    rdict = {**rdict, **self.object_json(p)}
                 elif p.format_ == "array":
                     # If the object is an array we create an array insted of dict
                     rdict = self.array_json(p)
@@ -102,15 +102,21 @@ class RequestBody:
 
     def array_json(self, param):
         return_array = []
-        for p in param.value:
-            if p.format_ == "object":
-                return_array.append(self.object_json(p))
-            elif p.format_ == "array":
-                return_array.append(self.array_json(p))
-            else:
-                nd = {}
-                nd[p.name] = p.value
-                return_array.append(nd)
+        try:
+            for p in param.value:
+                if p.format_ == "object":
+                    return_array.append(self.object_json(p))
+                elif p.format_ == "array":
+                    return_array.append(self.array_json(p))
+                else:
+                    nd = {}
+                    nd[p.name] = p.value
+                    return_array.append(nd)
+        except AttributeError:
+        # happens when param value = string
+            nd = {}
+            nd[param.name] = param.value
+            return_array.append(nd)
         return return_array
 
     def object_json(self, param):
@@ -141,11 +147,12 @@ class Security:
 
 
 class Parameter:
-    def __init__(self, name, location, required, format_=None, value=None, options=None):
+    def __init__(self, name, location, required, format_=None, format_detailed=None, value=None, options=None):
         self.name = name
         self.location = location
         self.required = required
         self.format_ = format_
+        self.format_detailed = format_detailed
         self.value = value
         # If parameter has only specific values it is allowed ot be they are stored here
         self.options = options
@@ -154,8 +161,8 @@ class Parameter:
 
     # Debugging function
     def print_info(self):
-        logging.debug("Name: {} \n Location: {}\n Required: {}\n Format: {}\n Value: {}\n Options: {}".format(
-            self.name, self.location, self.required, self.format_, self.value, self.options
+        logging.debug("Name: {} \n Location: {}\n Required: {}\n Format: {}\n Format_detailed: {}\n Value: {}\n Options: {}".format(
+            self.name, self.location, self.required, self.format_,self.format_detailed, self.value, self.options
         ))
 
     def set_value(self, val):
@@ -223,6 +230,10 @@ class Path:
         return epoints
 
     def get_methods(self):
+        '''
+        Potentially useless after changes
+        :return:
+        '''
         methods = []
         if self.get is not None:
             methods.append("GET")
