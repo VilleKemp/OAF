@@ -42,6 +42,8 @@ class Req:
     rand_string_length = 10
     # location for the dummy value
     DUMMY_FILE = 'seed/dummy'
+    # Sets requests allow_redirects parameters value
+    ALLOW_REDIRECTS = False
 
     def __init__(self, url, parameters, method, header=None, content=None, security=None):
         self.url = url
@@ -378,22 +380,26 @@ class Req:
         if self.method == "GET":
             r = requests.get(r_url,
                              headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files)
+                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
+                             allow_redirects=self.ALLOW_REDIRECTS)
 
         elif self.method == "POST":
             r = requests.post(r_url,
                              headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files)
+                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
+                              allow_redirects=self.ALLOW_REDIRECTS)
 
         elif self.method == "DELETE":
             r = requests.delete(r_url,
                              headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files)
+                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
+                                allow_redirects=self.ALLOW_REDIRECTS)
 
         elif self.method == "PUT":
             r = requests.put(r_url,
                              headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files)
+                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
+                             allow_redirects=self.ALLOW_REDIRECTS)
 
         else:
             logging.error("Error sending request. Method not found")

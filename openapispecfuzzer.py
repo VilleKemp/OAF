@@ -13,7 +13,7 @@ import parsers
 # Move these to config at some point
 ATTEMPTS = 30
 UNTIL_GIVE_UP = 15
-ACCEPTED_CODES = [200]
+ACCEPTED_CODES = [200, 201, 204, 303]
 DUPLICATES_COUNT = 3
 # TODo 4.4
 '''
@@ -190,18 +190,21 @@ def request_generator(api, args):
         # Go over each path
         counter = counter + 1
         for path in api.paths:
-        # Give path to create_request
-            for method, m in path.endpoint().items():
-                result, codes = create_request(path, method, m, args, good_values, codes)
-                # If creation was successful add to legit_requests
-                if result is not False:
-                    legit_requests.append(result)
-                    logging.debug("Good request received. There are {} good requests out of {} total".format(len(legit_requests), api.amount()))
-                    # Save all values that went through.
-                    logging.debug("URL: {}{}".format(result.url.base, result.url.endpoint))
-                    for par in result.return_pars():
-                        logging.debug("Adding par: {} {}\n    {}".format(par.name, par.format_, par.value))
-                        good_values.append(par)
+            # Only works with ONE skip
+            logging.debug("Going to {} skip is {}".format(path.path, args.skip))
+            if path.path != args.skip:
+            # Give path to create_request
+                for method, m in path.endpoint().items():
+                    result, codes = create_request(path, method, m, args, good_values, codes)
+                    # If creation was successful add to legit_requests
+                    if result is not False:
+                        legit_requests.append(result)
+                        logging.debug("Good request received. There are {} good requests out of {} total".format(len(legit_requests), api.amount()))
+                        # Save all values that went through.
+                        logging.debug("URL: {}{}".format(result.url.base, result.url.endpoint))
+                        for par in result.return_pars():
+                            logging.debug("Adding par: {} {}\n    {}".format(par.name, par.format_, par.value))
+                            good_values.append(par)
                 '''
                 for p in result.parameters:
                     good_values.append(p)
@@ -209,7 +212,8 @@ def request_generator(api, args):
                     for x in i.params:
                         good_values.append(x)
                 '''
-
+            else:
+                logging.info("Skipped {}".format(path.path))
     ########## Debugging block #############
 
     logging.info("Generated {} legit requests".format(len(legit_requests)))
@@ -564,6 +568,7 @@ def main():
         parsers.openapi2(api)
     else:
         logging.error("Openapi version isn't 2 or 3. Version: "+api.get("openapi"))
+
 
     requests = request_generator(api, args)
     try:
