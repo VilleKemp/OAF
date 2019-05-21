@@ -143,7 +143,27 @@ class Security:
         self.apikey = apikey
 
     def get_details(self):
-        return self.type_, self.name, self.location
+        if self.type_ == "apiKey":
+            return self.type_, self.name, self.location
+        elif self.type_ == "oauth2":
+            return self.type_, self.flows, None
+
+    def get_scopes(self):
+        '''
+        return scopes
+        :return:
+        '''
+        scopes = {}
+        l = []
+        print(self.get_details())
+        print(self.flows)
+        for scope, value in self.flows.items():
+            for s, v in value.get("scopes").items():
+                l.append(s)
+            scopes[scope] = l
+            l = []
+        return scopes
+
 
 
 class Parameter:

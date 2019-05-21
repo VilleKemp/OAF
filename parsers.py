@@ -20,11 +20,11 @@ def create_security(security):
         s_name = security.get("name")
         s_location = security.get("in")
         logging.debug("name {} location {}".format(s_name, s_location))
-    elif s_type is "http":
+    elif s_type == "http":
         s_scheme = security["scheme"]
-    elif s_type is "oauth2":
+    elif s_type == "oauth2":
         s_flows = security["flows"]
-    elif s_type is "openIdConnect":
+    elif s_type == "openIdConnect":
         s_ourl = security["openIdConnectUrl"]
 
     return model.Security(s_type, s_name, s_location,
@@ -361,6 +361,9 @@ def openapi3(json, args):
                     content = paths[endpoint][method]["responses"][response]["content"]
                 except KeyError:
                     content = None
+                logging.debug("Adding response {} {}".format(endpoint, method))
+                logging.info(response)
+                logging.info(content)
                 new_response = model.Response(response, content)
                 new_method.add_response(new_response)
             if not new_path.new_method(new_method, method):

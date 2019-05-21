@@ -17,6 +17,8 @@ import random
 import string
 import logging
 import requests
+import requests_oauthlib
+
 import re
 import sys
 import model3 as model
@@ -45,7 +47,7 @@ class Req:
     # Sets requests allow_redirects parameters value
     ALLOW_REDIRECTS = False
 
-    def __init__(self, url, parameters, method, header=None, content=None, security=None):
+    def __init__(self, url, parameters, method, header=None, content=None, security=None, responses=None):
         self.url = url
         self.parameters = parameters
         self.method = method
@@ -58,6 +60,7 @@ class Req:
         # requestBody object
         self.content = content
         self.security = security
+        self.responses = responses
         self.par_query = {}
         self.par_header = {}
         self.par_cookie = {}
@@ -269,8 +272,37 @@ class Req:
             return
         return
 
+    def connect_oauth(self, sec):
+        '''
+        Creates an oauth session based on the information found in the sec object
 
-    def send(self, args):
+        :param sec:
+        :return:
+        '''
+        # TODO add support for more oauth flows
+        # TODO implicit doesn't seem to work. Need to check if the issues is with petshop or with the implementation
+        # Implicit flow. Only using required parameters
+        scope = []
+        if sec.type_ == "oauth2" and sec.flows.get("implicit") is not None:
+            try:
+                for s, value in sec.flows.get("implicit").get("scopes").items():
+                    scope.append(s)
+                auth_url = sec.flows.get("implicit").get("authorizationUrl")
+            except TypeError:
+                logging.exception("Scopes likely missing")
+                return None
+            except KeyError:
+                logging.exception("authorizationUrl likely missing")
+                return None
+            logging.info("oauth2 implicit flow")
+            logging.info(auth_url)
+            # TODO this part crashes if auth_url isn't using https
+            oauth = requests_oauthlib.OAuth2Session(scope=scope, client_id="sample-client-id")
+            url, state = oauth.authorization_url(auth_url)
+        logging.debug("state: {}  url: {}".format(state,url))
+        return oauth, state
+
+    def send(self, args, session=None):
         '''
         Sends the request based on its values.
 
@@ -327,6 +359,23 @@ class Req:
                         logging.error("Security location is {}. It need to be query, cookie or header")
                         sys.exit(0)
 
+                elif sec.type_ == "oauth2":
+                    # If current session object isn't an oauth2 object we replace it with one
+                    if not isinstance(session, requests_oauthlib.oauth2_session.OAuth2Session):
+                        session, state = self.connect_oauth(sec)
+                        if session is None:
+                            logging.error("Oauth connection failed")
+                            sys.exit(0)
+                    # Check if current session scope contains all scopes of the current sec
+                    # If not create new session
+                    scopes = sec.get_scopes()
+                    scopes = scopes["implicit"]
+                    logging.debug("Scopes: {}".format(scopes))
+                    if not all(elem in session.scope for elem in scopes):
+                        logging.debug("Scopes don't match {} {}".format(session.scope, scopes))
+                        session, state = self.connect_oauth(sec)
+
+
                 #else:
                     #logging.error("Security type {} provided".format(sec.type_))
                     #logging.error("Only apikey security is currently supported. Shutting down program")
@@ -361,51 +410,70 @@ class Req:
                 del self.header["Content-Type"]
         except KeyError:
             logging.debug("")
-        # TODO currently only uses first url
+        # Endpoints should be named in a format like /<name>/ but servers can be either
+        # <url>/ or <url>. In case the url ends with / it should be removed
         if self.url.base[0].endswith('/'):
             self.url.base[0] = self.url.base[0][:-1]
         r_url = ''.join((self.url.base[0], self.url.endpoint))
-        # Replace {par} with urlparameter
-        if self.url.parameter is not None:
-            r_url = re.sub('{.*}', str(self.url.parameter), r_url, flags=re.DOTALL)
 
+        d = {}
         if args.cheader:
-            d = {}
             d[args.cheader[0]] = args.cheader[1]
-            self.header = {**self.header, **d}
+            # self.header = {**self.header, **d}
 
-        logging.debug("\nSending {} to {} ".format(self.method, r_url))
-        logging.debug("Header params: {}\n Cookie params: {}\n Query params: {}\n Path params: {}\n Content: {}\n Files: {}".format(
-            {**self.par_header, **self.sec_header, **self.header}, {**self.par_cookie, **self.sec_cookie}, {**self.par_query, **self.sec_query}, self.url.parameter, request_body, self.files))
-        if self.method == "GET":
-            r = requests.get(r_url,
-                             headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
-                             allow_redirects=self.ALLOW_REDIRECTS)
+        # If there is no Session then we create a new one
+        if session is None:
+           session = requests.Session()
 
-        elif self.method == "POST":
-            r = requests.post(r_url,
-                             headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
-                              allow_redirects=self.ALLOW_REDIRECTS)
+        try:
+            # Replace {par} with urlparameter
+            if self.url.parameter is not None:
+                r_url = re.sub('{.*}', str(self.url.parameter), r_url, flags=re.DOTALL)
 
-        elif self.method == "DELETE":
-            r = requests.delete(r_url,
-                             headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
-                                allow_redirects=self.ALLOW_REDIRECTS)
+            logging.debug("\nSending {} to {} ".format(self.method, r_url))
+            logging.debug("Header params: {}\n Cookie params: {}\n Query params: {}\n Path params: {}\n Content: {}\n Files: {}".format(
+                {**self.par_header, **self.sec_header, **self.header, **d}, {**self.par_cookie, **self.sec_cookie}, {**self.par_query, **self.sec_query}, self.url.parameter, request_body, self.files))
+            if self.method == "GET":
+                r = session.get(r_url,
+                                 headers={**self.par_header, **self.sec_header, **self.header, **d}, cookies={**self.par_cookie, **self.sec_cookie},
+                                 params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
+                                 allow_redirects=self.ALLOW_REDIRECTS)
 
-        elif self.method == "PUT":
-            r = requests.put(r_url,
-                             headers={**self.par_header, **self.sec_header, **self.header}, cookies={**self.par_cookie, **self.sec_cookie},
-                             params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
-                             allow_redirects=self.ALLOW_REDIRECTS)
+            elif self.method == "POST":
+                r = session.post(r_url,
+                                 headers={**self.par_header, **self.sec_header, **self.header,**d}, cookies={**self.par_cookie, **self.sec_cookie},
+                                 params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
+                                  allow_redirects=self.ALLOW_REDIRECTS)
 
-        else:
-            logging.error("Error sending request. Method not found")
-            return False
+            elif self.method == "DELETE":
+                r = session.delete(r_url,
+                                 headers={**self.par_header, **self.sec_header, **self.header, **d}, cookies={**self.par_cookie, **self.sec_cookie},
+                                 params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
+                                    allow_redirects=self.ALLOW_REDIRECTS)
 
-        return r.status_code, r
+            elif self.method == "PUT":
+                r = session.put(r_url,
+                                 headers={**self.par_header, **self.sec_header, **self.header, **d}, cookies={**self.par_cookie, **self.sec_cookie},
+                                 params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
+                                 allow_redirects=self.ALLOW_REDIRECTS)
+
+            else:
+                logging.error("Error sending request. Method not found")
+                return False, False, False
+
+            return r.status_code, r, session
+        except ValueError:
+            # Requests library checks that header values can't contain \n and such RFC 7230 protocol stuff
+            # This means it crashes when radamsa gives it some fancy values.
+            # This is good because now incoming requests should be in proper form
+            logging.exception("ValueError in req.send")
+        except Exception:
+            logging.exception(
+                "Header params: {}\n Cookie params: {}\n Query params: {}\n Path params: {}\n Content: {}\n Files: {}".format(
+                    {**self.par_header, **self.sec_header, **self.header, **d}, {**self.par_cookie, **self.sec_cookie},
+                    {**self.par_query, **self.sec_query}, self.url.parameter, request_body, self.files))
+        # Should we still return session if send crashes?
+        return None, None, session
 
     def use_good_values(self, good_values):
         '''
@@ -471,7 +539,7 @@ class Req:
             if parameter.format_ in self.arrays or parameter.format_ in self.objects:
                 # If parameter is array or obj it has other parameters within
                 # Except obj can contain a single array or obj value
-                print(parameter, parameter)
+                #print(parameter, parameter)
                 for par in parameter.value:
                     if par.format_ in self.objects or par.format_ in self.arrays:
                         name_list = self.return_from_nested(par, name_list)
@@ -481,6 +549,7 @@ class Req:
 
         except TypeError:
             # Invoked when obj contains a single array
+            logging.exception("Return_from_nested TypeError")
             if parameter.format_ in self.objects or parameter.format_ in self.arrays:
 
                 name_list = self.return_from_nested(parameter.value, name_list)
@@ -488,8 +557,8 @@ class Req:
         except AttributeError:
             # Invoked in cases when obj or array contain a single string.
             # In case of petshop triggering this might be a bug
+            logging.exception("Return_from_nested AttributeError")
             return name_list
-
 
         return name_list
 
@@ -518,3 +587,19 @@ class Req:
                     ret.append(par)
         return ret
 
+    def valid_response_codes(self):
+        '''
+        Returns a list containing all the valid response codes for this request.
+        Return codes are integers due to requests library returning integer codes.
+        Non int values like default are appended as they are.
+        :return:
+        '''
+        rcodes = []
+        for resp in self.responses:
+            try:
+                rcodes.append(int(resp.code))
+            except ValueError:
+                rcodes.append(resp.code)
+        logging.debug("{}{} {}".format(self.url.base, self.url.endpoint, self.method))
+        logging.debug("valid_response_codes {}".format(rcodes))
+        return rcodes

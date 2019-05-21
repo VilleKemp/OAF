@@ -9,12 +9,15 @@ import requests
 import model3 as model
 import req as req_model
 import parsers
+import itertools
 ##GLOBALS##
 # Move these to config at some point
 ATTEMPTS = 30
 UNTIL_GIVE_UP = 15
 ACCEPTED_CODES = [200, 201, 204, 303]
 DUPLICATES_COUNT = 3
+CHAIN_LENGTH = 4
+
 # TODo 4.4
 '''
 Ainakin tag kenttä luodaan väärin. Tag nimen sijaan luodaan objekti null: ...
@@ -83,22 +86,21 @@ def radamsa(config):
     # Take one of the fuzzcases, use it and then remove it from the pool of files that the above script checks
 
     file_under_use = temp_folder + "/inuse.txt"
-    query = 'ls ' +testcase_folder + ' | ' + 'head '+ '-n ' + '1'
+    query = 'ls ' +testcase_folder + ' | ' + 'head ' + '-n ' + '1'
     logging.info("Query2 is : {}".format(query))
     logging.debug(subprocess.check_output(query, shell=True))
     filename = subprocess.check_output(query, shell=True)
     filename = filename.decode()
     filename = filename.strip("\n")
-    query = 'mv ' +testcase_folder+"/"+ str(filename)+ " " + file_under_use
+    query = 'mv ' + testcase_folder +"/"+ str(filename)+ " " + file_under_use
     logging.info("Query3: {}".format(query))
     logging.info(subprocess.check_output(query, shell=True))
 
-
     #logging.info(subprocess.check_output(['mv','"' + testcase_folder + '/$(ls ' + testcase_folder + ' | ' + 'head' + ' -n 1)"', file_under_use], shell=True))
     logging.info("Reading {}".format(file_under_use))
-    with open(file_under_use,'r', errors = 'ignore') as f:
+    with open(file_under_use, 'r', errors='ignore') as f:
         fuzz_param = f.read()
-    logging.debug("Fuzz parameter is : {}".format(fuzz_param))
+    #logging.debug("Fuzz parameter is : {}".format(fuzz_param))
     return fuzz_param
 
 
@@ -186,6 +188,7 @@ def request_generator(api, args):
     counter = 0
     # debug variable that contains all the codes that create_request encounters
     codes = []
+    session = None
     while len(legit_requests) != api.amount() and counter < UNTIL_GIVE_UP:
         # Go over each path
         counter = counter + 1
@@ -195,7 +198,7 @@ def request_generator(api, args):
             if path.path != args.skip:
             # Give path to create_request
                 for method, m in path.endpoint().items():
-                    result, codes = create_request(path, method, m, args, good_values, codes)
+                    result, codes, session = create_request(path, method, m, args, good_values, codes, session)
                     # If creation was successful add to legit_requests
                     if result is not False:
                         legit_requests.append(result)
@@ -229,7 +232,7 @@ def request_generator(api, args):
     for r in legit_requests:
         logging.debug("     {}{}".format(r.url.base, r.url.endpoint))
         logging.debug(r.method)
-        '''
+
         logging.debug("Parameters:")
         for p in r.parameters:
             logging.debug("     {} {}".format(p.name, p.format_))
@@ -244,14 +247,23 @@ def request_generator(api, args):
                     for ipar in para.value:
                         logging.info("      {}".format(ipar.name))
                         logging.info("      {}".format(ipar.value))
-        '''
-    ##############################################
-    # This currently does nothing. Implement chain creation later
-    chains = []
-    chains = create_chains(legit_requests)
 
+    ##############################################
 
     return legit_requests
+
+
+def pretty_print_POST(req):
+    """
+    Taken from https://stackoverflow.com/questions/20658572/python-requests-print-entire-http-request-raw
+    """
+    print('{}\n{}\n{}\n\n{}'.format(
+        '-----------START-----------',
+        req.method + ' ' + req.url,
+        '\n'.join('{}: {}'.format(k, v) for k, v in req.headers.items()),
+        req.body,
+    ))
+
 
 def fuzz(reqs, config, args):
     '''
@@ -262,13 +274,13 @@ def fuzz(reqs, config, args):
     '''
     logging.debug("Inputting: {} {} {} {}".format(config["testcase_folder"], config["seed_folder"], config["radamsa_output_amount"], config["temp_folder"]))
     logging.debug("Fuzzing!")
-    loopi=0
-
+    loopi = 0
+    session = None
     while True:
         for r in reqs:
             loopi = loopi + 1
             logging.debug("Fuzzing loop {}".format(loopi))
-            logging.info("{}{} {}".format(r.url.base,r.url.endpoint, r.method))
+            logging.info("{}{} {}".format(r.url.base, r.url.endpoint, r.method))
             for p in r.parameters:
                 # Dumb way. Just for the demo
                 logging.info("p_-:{}".format(p))
@@ -283,7 +295,19 @@ def fuzz(reqs, config, args):
                     elif pa.format_ == "array":
                         placeholder_array(pa.value, config)
 
-            r.send(args)
+            code, request_object, session = r.send(args, session)
+            valid = r.valid_response_codes()
+            if code not in valid and request_object is not None:
+                # TODO create a new logger just for fuzzing errors
+                logging.error("###################")
+                logging.error("Undocumented code {} Valid codes {}\n Sent the following:".format(code, r.valid_response_codes()))
+                logging.error("{} {}".format(request_object.request.url, request_object.request.method))
+                logging.error(request_object.request.headers)
+                logging.error(request_object.request.body)
+                logging.error("Received:")
+                logging.error(request_object.headers)
+                logging.error(request_object.text)
+                logging.error("###################")
 
 
 def placeholder_obj(params, config):
@@ -305,15 +329,50 @@ def placeholder_array(params, config):
         elif pa.format_ == "array":
             placeholder_array(pa.value, config)
 
+
 def create_chains(reqs):
     '''
-
+    Initially a dumb bruteforce way
     :param reqs:
     :return:
     '''
+    all = list(itertools.permutations(reqs, CHAIN_LENGTH ))
+    valid = []
+    chain_fail = False
+    count = 0
+    logging.info("Starting chain testing. There are {} chains and {} attempts".format(len(all), UNTIL_GIVE_UP))
+    try:
+        while count < UNTIL_GIVE_UP or len(valid) < len(all):
+            for chain in all:
+                # Create a new session for each chain
+                session = None
+                for req in chain:
+                    if count < 2:
+                        # Run the loop twice with the "working" values and then start randomizing them
+                        req.set_dummy_values()
+                    code, response, session = req.send(session)
+                    if code not in ACCEPTED_CODES:
+                        # If response code is not valid we break this try and try again later.
+                        chain_fail = True
+                        break
+                if chain_fail is False and chain not in valid:
+                    valid.append(chain)
+                chain_fail = False
+            count += 1
+    except KeyboardInterrupt:
+        logging.exception("Interrupted")
+    logging.info("Chain creation complete. There were total of {} chains and {} attempts.".format(len(all), count))
+    logging.info("Amount of chains in which every response code was valid {} was {}".format(ACCEPTED_CODES, len(valid)))
+
+
+
+
+
+
     return reqs
 
-def create_request(path, method, m, args, good_values=None, codes=[]):
+
+def create_request(path, method, m, args, good_values=None, codes=[], session=None):
     '''
     # Creates a functional request
     Constructs a req object
@@ -327,16 +386,16 @@ def create_request(path, method, m, args, good_values=None, codes=[]):
     #logging.debug("".format(method))
     if m.has_request is not True:
         url = req_model.Url(m.server, path.path)
-        parameters = m.parameters
+        #parameters = m.parameters
     # TODO Remove this if not used
         header = None
-        content = m.requestBody
-        logging.info("Methods requestBody is {}".format(content))
-        for r in content:
+        #content = m.requestBody
+        logging.info("Methods requestBody is {}".format(m.requestBody))
+        for r in m.requestBody:
             logging.info(r.print_info())
 
-        security = m.security
-        requ = req_model.Req(url, parameters, method, header, content, security)
+        #security = m.security
+        requ = req_model.Req(url, m.parameters, method, header, m.requestBody, m.security, m.responses)
 
 
         # Below is a long and messy way to do the following
@@ -450,7 +509,7 @@ def create_request(path, method, m, args, good_values=None, codes=[]):
         for i in range(ATTEMPTS):
 
             logging.debug("Sending to {}".format(path.path))
-            code, r = requ.send(args)
+            code, r, session = requ.send(args, session)
             logging.debug("Received code {}".format(code))
             logging.debug("Message: {}".format(r.text))
             if code not in codes:
@@ -462,17 +521,18 @@ def create_request(path, method, m, args, good_values=None, codes=[]):
                                                                       requ.url.endpoint, requ.url.parameter,
                                                                       requ.method))
 
-                return requ, codes
+                return requ, codes, session
             else:
                 try:
                     requ.use_good_values(good_sets.pop())
                 except IndexError:
                     requ.set_dummy_values()
+            if code == "401":
+                # Expectation is that sometimes this loop logs out/removes the active user/some way breaks its credentials.
+                # In these cases we create a new session by setting session = None
+                session = None
 
-
-
-
-    return False, codes
+    return False, codes, session
 
 
 def ref_parser(datadict, full_dict):
@@ -514,6 +574,8 @@ def main():
                         help='Skips specified endpoints. Give endpoints in format ep1,ep2,epx')
     parser.add_argument('-custom_headers', dest='cheader', nargs=2,
                         help='Give a custom header that is used in every request. Give it in format -custom_headers name value')
+    parser.add_argument('-allow_http', dest='allow_http', action='store_true',
+                        help="Sets os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' allowing the use of http in oauth2")
     args = parser.parse_args()
 
     # Config
@@ -538,7 +600,8 @@ def main():
     
     ################
 
-
+    if args.allow_http:
+        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 
 
@@ -571,11 +634,17 @@ def main():
 
 
     requests = request_generator(api, args)
+
+    # This currently does nothing. Implement chain creation later
+    chains = []
+    chains = create_chains(requests)
+
     try:
         fuzz(requests, config, args)
-    except Exception as e:
-        logging.info("Fuzzer crashed")
-        logging.info(repr(e))
+    except KeyboardInterrupt:
+        logging.error("Fuzzer was stopped.")
+
+
 
 
 if __name__ == "__main__":
