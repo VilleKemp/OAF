@@ -131,6 +131,24 @@ class RequestBody:
                 return_dict[p.name] = p.value
         return return_dict
 
+    def form_url_encoded(self):
+        '''
+        Return parameters in url-encoded format
+        :return:
+        '''
+        l = []
+        logging.debug("Form_url_encoded {}".format(self.params))
+        for par in self.params:
+            if par.format_ == "object":
+              for p in par.value:
+                  logging.debug("Combining {}:{} and {}".format(p.name, p.format_, p.value))
+                  l.append(p.name + "=" + p.value)
+            else:
+                logging.debug("Combining {}:{} and {}".format(par.name, par.format_, par.value))
+                l.append(par.name + "=" + par.value)
+        return "&".join(l)
+
+
 
 class Security:
     def __init__(self, type_, name, location, scheme, flows, openidconnecturl, apikey=None):

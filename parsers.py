@@ -242,7 +242,7 @@ def openapi3(json, args):
 
             # If securitySchemes exists we need to take it into accounts due to
             # Api likely using it to store security information
-            if json["components"]["securitySchemes"] and security is not None:
+            if json["components"].get("securitySchemes") and security is not None:
                 # print(security)
                 for s in security:
                     key = list(s.keys())[0]
@@ -256,7 +256,6 @@ def openapi3(json, args):
 
             # ################
             # #####PARAMETER PARSING ##################
-            # TODO Seems to return incorrect parameter locations
             logging.debug("     Parsing parameters")
             if "parameters" in paths[endpoint][method]:
                 for parameter in paths[endpoint][method]["parameters"]:
@@ -274,7 +273,6 @@ def openapi3(json, args):
                             par_format = parameter["schema"].get("type")
                             par_format_detailed = parameter["schema"].get("format")
                             logging.info("Parameter format: {}".format(par_format))
-                            # TODO remove commented code after parser works
                             # This part assumes that there is only one parameter within the array.
                             # It creates a new parameter object within the array parameter.
                             if par_format == "array":
@@ -303,37 +301,6 @@ def openapi3(json, args):
                                         par_format_detailed_ = value
                                 par_value = model.Parameter(par_name_, par_location_, par_required_,
                                                             par_format_, par_format_detailed_, par_value_, par_options_)
-
-                                '''
-                                This is old code that did not work. Saved because I might have to use it later
-                                
-                                par_value = []
-                                for item in parameter["schema"]["items"]:
-                                    logging.info("Parsing array parameter {}".format(item))
-                                    par_name_ = None
-                                    par_options_ = None
-                                    par_location_ = None
-                                    par_required = None
-
-                                    if item["name"]:
-                                        logging.info("GREP1")
-                                        par_name_ = item["name"]
-
-                                    if "enum" in item:
-                                        logging.info("GREP")
-                                        par_options_ = item["enum"]
-
-                                    if item["required"]:
-                                        par_required_ = item["required"]
-
-                                    par_format_ = item["type"]
-
-                                    par_value.append(model.Parameter(par_name_, par_location_,
-                                                                     par_required_, par_format_, par_options_))
-                                # Add array parameter containing other parameters to method
-                                new_method.add_parameter(model.Parameter(par_name, par_location,
-                                                                         par_required, par_format, par_value))
-                                '''
                         else:
                             par_format = parameter["schema"]
 

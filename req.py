@@ -24,6 +24,9 @@ import sys
 import model3 as model
 import datetime
 
+
+
+
 class Url:
     def __init__(self, base, endpoint, parameter=''):
         self.base = base
@@ -383,13 +386,27 @@ class Req:
 
         # RequestBody
         # Choose which requestBody to use if it exists
-        # Todo FIRST VERSION ONLY SUPPORTS JSON! ADD XML LATER WHEN THE DEMO WORKS
+        # Todo This structure is dumb
 
         request_body = None
+        '''
         if len(self.content) == 1:
-            # This might cause unintended situations
-            self.header["Content-Type"] = self.content[0].type_#"application/json"
-            request_body = self.content[0]
+            r = self.content[0]
+            if r.type_ == "application/json":
+                request_body = r
+                # This should be technically right.
+                # Alternative ways: Check header and x-* fields for headers
+                # Try without and after 415 (unsupported media type) do this
+                self.header["Content-Type"] = r.type_
+                request_body = request_body.json()
+
+            elif "www-form-urlencoded" in r.type_:
+                request_body = r
+                self.header["Content-Type"] = r.type_
+                request_body = request_body.form_url_encoded()
+            else:
+                self.header["Content-Type"] = self.content[0].type_#"application/json"
+                request_body = self.content[0]
         elif self.content is not None:
             for r in self.content:
                 if r.type_ == "application/json":
@@ -398,9 +415,34 @@ class Req:
                     # Alternative ways: Check header and x-* fields for headers
                     # Try without and after 415 (unsupported media type) do this
                     self.header["Content-Type"] = r.type_
+                    request_body = request_body.json()
                     break
-        if request_body is not None:
-            request_body = request_body.json()
+
+                elif "www-form-urlencoded" in r.type_:
+                    request_body = r
+                    self.header["Content-Type"] = r.type_
+                    request_body = request_body.form_url_encoded()
+        '''
+        if self.content is not None:
+            for r in self.content:
+                if r.type_ == "application/json":
+                    request_body = r
+                    # This should be technically right.
+                    # Alternative ways: Check header and x-* fields for headers
+                    # Try without and after 415 (unsupported media type) do this
+                    self.header["Content-Type"] = r.type_
+                    request_body = request_body.json()
+                    break
+
+                elif "www-form-urlencoded" in r.type_:
+                    request_body = r
+                    self.header["Content-Type"] = r.type_
+                    request_body = request_body.form_url_encoded()
+                else:
+
+                    self.header["Content-Type"] = r.type_
+                    request_body = None
+
 
         # TODO rethink requests creation.
         # Tämä on vähän purkka. Multipart viestittely ei toimi requests jos itse asettaa header
@@ -409,7 +451,7 @@ class Req:
             if self.header["Content-Type"] == "multipart/form-data":
                 del self.header["Content-Type"]
         except KeyError:
-            logging.debug("")
+            logging.debug("Deleted Content-Type header due to it being multipart/form-data")
         # Endpoints should be named in a format like /<name>/ but servers can be either
         # <url>/ or <url>. In case the url ends with / it should be removed
         if self.url.base[0].endswith('/'):
@@ -425,6 +467,16 @@ class Req:
         if session is None:
            session = requests.Session()
 
+        # If proxy argument was given, sets up proxy
+        if args.proxy:
+            proxyDict = {
+                "http": args.proxy,
+                "https": args.proxy,
+                "ftp": args.proxy
+            }
+        else:
+            proxyDict = None
+
         try:
             # Replace {par} with urlparameter
             if self.url.parameter is not None:
@@ -437,25 +489,25 @@ class Req:
                 r = session.get(r_url,
                                  headers={**self.par_header, **self.sec_header, **self.header, **d}, cookies={**self.par_cookie, **self.sec_cookie},
                                  params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
-                                 allow_redirects=self.ALLOW_REDIRECTS)
+                                 allow_redirects=self.ALLOW_REDIRECTS, proxies=proxyDict)
 
             elif self.method == "POST":
                 r = session.post(r_url,
                                  headers={**self.par_header, **self.sec_header, **self.header,**d}, cookies={**self.par_cookie, **self.sec_cookie},
                                  params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
-                                  allow_redirects=self.ALLOW_REDIRECTS)
+                                  allow_redirects=self.ALLOW_REDIRECTS, proxies=proxyDict)
 
             elif self.method == "DELETE":
                 r = session.delete(r_url,
                                  headers={**self.par_header, **self.sec_header, **self.header, **d}, cookies={**self.par_cookie, **self.sec_cookie},
                                  params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
-                                    allow_redirects=self.ALLOW_REDIRECTS)
+                                    allow_redirects=self.ALLOW_REDIRECTS, proxies=proxyDict)
 
             elif self.method == "PUT":
                 r = session.put(r_url,
                                  headers={**self.par_header, **self.sec_header, **self.header, **d}, cookies={**self.par_cookie, **self.sec_cookie},
                                  params={**self.par_query, **self.sec_query}, data=request_body, files=self.files,
-                                 allow_redirects=self.ALLOW_REDIRECTS)
+                                 allow_redirects=self.ALLOW_REDIRECTS, proxies=proxyDict)
 
             else:
                 logging.error("Error sending request. Method not found")
@@ -465,13 +517,15 @@ class Req:
         except ValueError:
             # Requests library checks that header values can't contain \n and such RFC 7230 protocol stuff
             # This means it crashes when radamsa gives it some fancy values.
-            # This is good because now incoming requests should be in proper form
+            # This is good because now outgoing requests should be in proper form
             logging.exception("ValueError in req.send")
         except Exception:
+            logging.error("#################EXCEPTION START###################")
             logging.exception(
-                "Header params: {}\n Cookie params: {}\n Query params: {}\n Path params: {}\n Content: {}\n Files: {}".format(
-                    {**self.par_header, **self.sec_header, **self.header, **d}, {**self.par_cookie, **self.sec_cookie},
+                "EXCEPTION HAPPENED\nSent {} to {}\nHeader params: {}\n Cookie params: {}\n Query params: {}\n Path params: {}\n Content: {}\n Files: {}".format(
+                    self.method, r_url, {**self.par_header, **self.sec_header, **self.header, **d}, {**self.par_cookie, **self.sec_cookie},
                     {**self.par_query, **self.sec_query}, self.url.parameter, request_body, self.files))
+            logging.error("#################EXCEPTION END###################")
         # Should we still return session if send crashes?
         return None, None, session
 

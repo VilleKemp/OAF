@@ -10,36 +10,27 @@ import model3 as model
 import req as req_model
 import parsers
 import itertools
+import random
+import copy
 ##GLOBALS##
 # Move these to config at some point
 ATTEMPTS = 30
-UNTIL_GIVE_UP = 15
+UNTIL_GIVE_UP = 5
 ACCEPTED_CODES = [200, 201, 204, 303]
 DUPLICATES_COUNT = 3
-CHAIN_LENGTH = 4
+CHAIN_LENGTH = 3
 
-# TODo 4.4
-'''
-Ainakin tag kenttä luodaan väärin. Tag nimen sijaan luodaan objekti null: ...
-Osa endpointeista ei toimi ilman OAUTH
-Osalle muuttujista ei generoida arvoja. Näyttäisi liittyvän listojen sisäisiin funktioihin
-Pitää kerätä Opeanpi parameter format kenttä. Nyt ei osaa generoida random date-time
-Nyt 9/20 saa ulos 200
-3/20 415 jonka pitäisi olla Oauthin vika
-404 User get. 
-401 authentication erroria 
-400 koska date time format väärä
 
-'''
+
 
 
 def initialize_logger(output_dir):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
      
-    # create console handler and set level to info
+    # create console handler and set level to INFO
     handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(logging.INFO)
     formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
@@ -253,61 +244,84 @@ def request_generator(api, args):
     return legit_requests
 
 
-def pretty_print_POST(req):
-    """
-    Taken from https://stackoverflow.com/questions/20658572/python-requests-print-entire-http-request-raw
-    """
-    print('{}\n{}\n{}\n\n{}'.format(
-        '-----------START-----------',
-        req.method + ' ' + req.url,
-        '\n'.join('{}: {}'.format(k, v) for k, v in req.headers.items()),
-        req.body,
-    ))
-
-
-def fuzz(reqs, config, args):
+def fuzz(reqs, valid_chains, config, args):
     '''
     Fuzzing module.
-    Initially will fuzz all of the variables. After that works more logic should be added
+    Calls other fuzzing functions. Current logic is intentionally random.
+    Currently does not save objects state.
     :param reqs:
     :return:
     '''
+
     logging.debug("Inputting: {} {} {} {}".format(config["testcase_folder"], config["seed_folder"], config["radamsa_output_amount"], config["temp_folder"]))
     logging.debug("Fuzzing!")
-    loopi = 0
+    loops = 10
     session = None
+    fuzz_loop_count = 0
     while True:
-        for r in reqs:
-            loopi = loopi + 1
-            logging.debug("Fuzzing loop {}".format(loopi))
-            logging.info("{}{} {}".format(r.url.base, r.url.endpoint, r.method))
-            for p in r.parameters:
-                # Dumb way. Just for the demo
-                logging.info("p_-:{}".format(p))
-                p.value = radamsa(config)
-            for o in r.content:
-                for pa in o.params:
-                    logging.info("pa:{}".format(pa))
-                    if pa.format_ != "object" and pa.format_ != "array":
-                        pa.value = radamsa(config)
-                    elif pa.format_ == "object":
-                        placeholder_obj(pa.value, config)
-                    elif pa.format_ == "array":
-                        placeholder_array(pa.value, config)
+        fuzz_loop_count += 1
+        logging.info("Fuzzing loop: {}".format(fuzz_loop_count))
+        case = random.choice([1, 2])
 
-            code, request_object, session = r.send(args, session)
-            valid = r.valid_response_codes()
-            if code not in valid and request_object is not None:
-                # TODO create a new logger just for fuzzing errors
-                logging.error("###################")
-                logging.error("Undocumented code {} Valid codes {}\n Sent the following:".format(code, r.valid_response_codes()))
-                logging.error("{} {}".format(request_object.request.url, request_object.request.method))
-                logging.error(request_object.request.headers)
-                logging.error(request_object.request.body)
-                logging.error("Received:")
-                logging.error(request_object.headers)
-                logging.error(request_object.text)
-                logging.error("###################")
+        if case == 1:
+            current_chain = random.choice(valid_chains)
+
+            for i in range(len(current_chain)):
+                # Fuzz the last request
+                if i == len(current_chain):
+                    logging.debug("Fuzzing last requests parameters")
+                    dumb_single_request_fuzz(current_chain[i], session, config, args)
+
+                current_chain[i].send(args, session)
+        elif case == 2:
+            logging.info("Fuzzing random request")
+            dumb_single_request_fuzz(random.choice(reqs), session, config, args)
+
+        else:
+            dumb_single_request_fuzz(random.choice(reqs), session, config, args)
+        # New session per chain
+        session = None
+
+    return
+
+
+def dumb_single_request_fuzz(r, session, config, args):
+    '''
+
+    :param r:
+    :param session:
+    :param config:
+    :param args:
+    :return:
+    '''
+    logging.info("{}{} {}".format(r.url.base, r.url.endpoint, r.method))
+    for p in r.parameters:
+        # Dumb way. Just for the demo
+        logging.info("p_-:{}".format(p))
+        p.value = radamsa(config)
+    for o in r.content:
+        for pa in o.params:
+            logging.info("pa:{}".format(pa))
+            if pa.format_ != "object" and pa.format_ != "array":
+                pa.value = radamsa(config)
+            elif pa.format_ == "object":
+                placeholder_obj(pa.value, config)
+            elif pa.format_ == "array":
+                placeholder_array(pa.value, config)
+
+    code, request_object, session = r.send(args, session)
+    valid = r.valid_response_codes()
+    if code not in valid and request_object is not None:
+        # TODO create a new logger just for fuzzing errors
+        logging.error("########UNDOCUMENTED CODE START###########")
+        logging.error("Undocumented code {} Valid codes {}\n Sent the following:".format(code, r.valid_response_codes()))
+        logging.error("{} {}".format(request_object.request.url, request_object.request.method))
+        logging.error(request_object.request.headers)
+        logging.error(request_object.request.body)
+        logging.error("Received:")
+        logging.error(request_object.headers)
+        logging.error(request_object.text)
+        logging.error("#########UNDOCUMENTED CODE END##########")
 
 
 def placeholder_obj(params, config):
@@ -330,46 +344,56 @@ def placeholder_array(params, config):
             placeholder_array(pa.value, config)
 
 
-def create_chains(reqs):
+def create_chains(reqs, args):
     '''
-    Initially a dumb bruteforce way
+    Initially a dumb brute force way. Takes all permutations of lenght CHAIN_LENGTH and attempts to legimize them.
     :param reqs:
     :return:
     '''
-    all = list(itertools.permutations(reqs, CHAIN_LENGTH ))
+    logging.info("Generating all permutations of lenght {} from list {}".format(CHAIN_LENGTH, reqs))
+    all = list(itertools.permutations(reqs, CHAIN_LENGTH))
+    if not args.validate_chains:
+        logging.info("Not validating chains")
+        return None, all
     valid = []
+    all2 = []
     chain_fail = False
     count = 0
+    total_chains = len(all)
     logging.info("Starting chain testing. There are {} chains and {} attempts".format(len(all), UNTIL_GIVE_UP))
     try:
-        while count < UNTIL_GIVE_UP or len(valid) < len(all):
+        while True:
+            counter = 0
             for chain in all:
                 # Create a new session for each chain
+                counter += 1
+                logging.info("Chain {}".format(counter))
                 session = None
                 for req in chain:
-                    if count < 2:
-                        # Run the loop twice with the "working" values and then start randomizing them
+                    if count > 1:
+                        # Run the loop once with the "working" values and then start randomizing them
                         req.set_dummy_values()
-                    code, response, session = req.send(session)
+                    code, response, session = req.send(args, session)
                     if code not in ACCEPTED_CODES:
                         # If response code is not valid we break this try and try again later.
                         chain_fail = True
-                        break
+
                 if chain_fail is False and chain not in valid:
                     valid.append(chain)
+                else:
+                    all2.append(chain)
                 chain_fail = False
+            all = all2[:]
             count += 1
+            logging.debug("COUNTING {} {}<{}".format(count, len(valid), total_chains))
+            if count > UNTIL_GIVE_UP or len(valid) >= total_chains:
+                break
     except KeyboardInterrupt:
         logging.exception("Interrupted")
     logging.info("Chain creation complete. There were total of {} chains and {} attempts.".format(len(all), count))
     logging.info("Amount of chains in which every response code was valid {} was {}".format(ACCEPTED_CODES, len(valid)))
 
-
-
-
-
-
-    return reqs
+    return valid, all
 
 
 def create_request(path, method, m, args, good_values=None, codes=[], session=None):
@@ -531,6 +555,18 @@ def create_request(path, method, m, args, good_values=None, codes=[], session=No
                 # Expectation is that sometimes this loop logs out/removes the active user/some way breaks its credentials.
                 # In these cases we create a new session by setting session = None
                 session = None
+            if code not in requ.valid_response_codes() and r is not None:
+                logging.error("###################")
+                logging.error(
+                    "Undocumented code {} Valid codes {}\n Sent the following:".format(code, requ.valid_response_codes()))
+                logging.error("{} {}".format(r.request.url, r.request.method))
+                logging.error(r.headers)
+                logging.error(r.request.body)
+                logging.error("Received:")
+                logging.error(r.headers)
+                logging.error(r.text)
+                logging.error("###################")
+
 
     return False, codes, session
 
@@ -576,6 +612,11 @@ def main():
                         help='Give a custom header that is used in every request. Give it in format -custom_headers name value')
     parser.add_argument('-allow_http', dest='allow_http', action='store_true',
                         help="Sets os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' allowing the use of http in oauth2")
+    parser.add_argument('-validate_chains', dest='validate_chains', action='store_true',
+                        help="If true validates each potential chain. Will take a while")
+    parser.add_argument('-use_proxy', dest='proxy',
+                        help="If you want to run your traffic through a prxy give its address here. Program will set reqeusts librarys"
+                             " http, https and ftp proxies to your desired address")
     args = parser.parse_args()
 
     # Config
@@ -633,14 +674,15 @@ def main():
         logging.error("Openapi version isn't 2 or 3. Version: "+api.get("openapi"))
 
 
-    requests = request_generator(api, args)
+    valid_requests = request_generator(api, args)
 
     # This currently does nothing. Implement chain creation later
-    chains = []
-    chains = create_chains(requests)
+    valid_chains, all_chains = create_chains(valid_requests, args)
+    if valid_chains is None:
+        valid_chains=all_chains
 
     try:
-        fuzz(requests, config, args)
+        fuzz(valid_requests, valid_chains, config, args)
     except KeyboardInterrupt:
         logging.error("Fuzzer was stopped.")
 
