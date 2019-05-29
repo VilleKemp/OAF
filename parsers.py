@@ -41,17 +41,11 @@ def handle_object(val, name=None):
     :param val:
     :return: Parameter object that has a type of object and value containing its parameters
     as Parameter objects
-
-    #TODO this and handle array must take in to consideration the following
-    category case. Joskus key on {'Category': {'title': 'Pet category', 'type': 'object', 'properties': {'id': {'type': 'integer', 'format': 'int64'}, 'name': {'type': 'string'}}, 'description': 'A category for a pet', 'example': {'name': 'name', 'id': 6}, 'xml': {'name': 'Category'}}}
- => jos type ei löydy mene taso alaspäin
-    SHOULD WORK.
-
- joskus tietoa on xml objectin alla.
  WIP
     '''
     parameters = []
     required_parameters = val.get("required")
+    logging.debug("handle object {}".format(val))
     if required_parameters is None:
         required_parameters = []
 
@@ -66,10 +60,14 @@ def handle_object(val, name=None):
             #print("NEW VALUE: {}".format(value))
 
         if value.get("type") == "object":
-            if name_ is not None:
-                parameters.append(handle_object(value, name_))
-            else:
-                parameters.append(handle_object(value))
+            try:
+                if name_ is not None:
+                    parameters.append(handle_object(value, name_))
+                else:
+                    parameters.append(handle_object(value))
+            except AttributeError:
+                # Intended to fix situation like  {'type': 'object', 'additionalProperties': {'type': 'object'}}
+                logging.exception("Attribute-error in handle_object")
         elif value.get("type") == "array":
             if name_ is not None:
                 parameters.append(handle_array(value, name_))
@@ -132,7 +130,7 @@ def create_request_body(rb):
         name = next(iter(rb))
         rb = rb[name]
     logging.debug("Creating requestbody")
-    #logging.debug("rb is : {}".format(rb))
+    logging.debug("rb is : {}".format(rb))
 
     required = rb.get("required")
     # loop the content. Create new requestbody object for each parameter
@@ -258,7 +256,9 @@ def openapi3(json, args):
             # #####PARAMETER PARSING ##################
             logging.debug("     Parsing parameters")
             if "parameters" in paths[endpoint][method]:
+
                 for parameter in paths[endpoint][method]["parameters"]:
+                    logging.debug("PARAMETER FOR ENDPOINT {} {} {}".format(endpoint, method, parameter))
                     #logging.debug("Parameter found {}".format(parameter))
                     par_name = parameter["name"]
                     par_location = parameter["in"]

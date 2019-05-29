@@ -14,7 +14,7 @@ import random
 import copy
 ##GLOBALS##
 # Move these to config at some point
-ATTEMPTS = 30
+ATTEMPTS = 3
 UNTIL_GIVE_UP = 5
 ACCEPTED_CODES = [200, 201, 204, 303]
 DUPLICATES_COUNT = 3
@@ -310,6 +310,7 @@ def dumb_single_request_fuzz(r, session, config, args):
                 placeholder_array(pa.value, config)
 
     code, request_object, session = r.send(args, session)
+    logging.info("Received code {}".format(code))
     valid = r.valid_response_codes()
     if code not in valid and request_object is not None:
         # TODO create a new logger just for fuzzing errors
@@ -534,8 +535,9 @@ def create_request(path, method, m, args, good_values=None, codes=[], session=No
 
             logging.debug("Sending to {}".format(path.path))
             code, r, session = requ.send(args, session)
-            logging.debug("Received code {}".format(code))
-            logging.debug("Message: {}".format(r.text))
+            if code and r is not None:
+                logging.debug("Received code {}".format(code))
+                logging.debug("Message: {}".format(r.text))
             if code not in codes:
                 codes.append(code)
 
@@ -571,7 +573,7 @@ def create_request(path, method, m, args, good_values=None, codes=[], session=No
     return False, codes, session
 
 
-def ref_parser(datadict, full_dict):
+def ref_parser(datadict, full_dict, happen=False):
     # parses over the dict and replaces parent of a $ref with result of ref_content
 
     # deepcopy before data manipulation
@@ -588,14 +590,15 @@ def ref_parser(datadict, full_dict):
                 dict2[name] = content
                 newdict[key] = dict2
                 ref_content(value.get("$ref"), full_dict)
+                happen = True
             else:
-                newdict[key] = ref_parser(datadict[key], full_dict)
+                newdict[key], happen = ref_parser(datadict[key], full_dict, happen)
         #
         '''
         elif key == "$ref":
             newdict[key] = ref_content(value, full_dict)
         '''
-    return newdict
+    return newdict, happen
 
 
 def main():
@@ -659,16 +662,23 @@ def main():
     api = readfile(args.api)
     # Parser doesn't work right if refs have nested refs. Calling multiple times fixes this.
     # TODO fix
-    api = ref_parser(api, api)
-    api = ref_parser(api, api)
+    stop = True
+    count = 0
+    while stop:
+        api, stop = ref_parser(api, api)
+        count += 1
+        logging.debug("ref_parsing loop {}. If you get stuck here it is very likely that there is a loop in your $refs".format(count))
+    logging.debug("End of re_parsing")
+
+    #api = ref_parser(api, api)
+
 
     # Writes the modified json as modified.json.
-    #with open('modified.json', 'w') as outfile:
-    #    json.dump(api, outfile)
-
-    if str(api.get("openapi")).startswith("3."):
+    with open('modified.json', 'w') as outfile:
+        json.dump(api, outfile)
+    if str(api.get("openapi")).startswith("3.") or str(api.get("swagger")).startswith("3."):
         api = parsers.openapi3(api, args)
-    elif str(api.get("openapi")).startswith("2."):
+    elif str(api.get("openapi")).startswith("2.") or str(api.get("swagger")).startswith("2."):
         parsers.openapi2(api)
     else:
         logging.error("Openapi version isn't 2 or 3. Version: "+api.get("openapi"))

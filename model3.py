@@ -257,14 +257,15 @@ class Path:
 
     def endpoint(self):
         epoints = {}
-        if self.get is not None:
-            epoints["GET"] = self.get
-        if self.put is not None:
-            epoints["PUT"] = self.put
-        if self.delete is not None:
-            epoints["DELETE"] = self.delete
+
         if self.post is not None:
             epoints["POST"] = self.post
+        if self.put is not None:
+            epoints["PUT"] = self.put
+        if self.get is not None:
+            epoints["GET"] = self.get
+        if self.delete is not None:
+            epoints["DELETE"] = self.delete
         return epoints
 
     def get_methods(self):
